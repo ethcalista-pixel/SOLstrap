@@ -1,0 +1,13 @@
+/target/
+/apps/settings/node_modules/
+/apps/settings/dist/
+/apps/settings/src-tauri/gen/
+/apps/settings/assets/icons/android/
+/apps/settings/assets/icons/ios/
+/apps/settings/assets/icons/Square*.png
+/apps/settings/assets/icons/StoreLogo.png
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example

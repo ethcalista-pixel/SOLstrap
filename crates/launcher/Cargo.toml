@@ -1,0 +1,12 @@
+[package]
+name = "solstrap-launcher"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = "1"
+serde_json = "1"
+solstrap-core = { path = "../core" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
