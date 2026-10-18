@@ -30,7 +30,22 @@ Verified on the development Windows machine on 18 October 2026:
 - `--dry-run` selects the original `ferns-launcher` executable and redacts the link payload without starting a client.
 - `--dry-run` for `ferns2026` reports that the original player launcher is currently missing. Its registration exists, but its target file disappeared after the initial inspection. Integration remains disabled; Ferns must be repaired before validating that route.
 
-No real protocol changes, Ferns client file changes, or client joins were performed. Native theme persistence and file-dialog flows have not been manually verified. Desktop automation reported a window-bounds error during appearance interaction and later detected user activity; further automated input was stopped to leave the app available for review.
+The initial automated checks performed no real protocol changes, Ferns client file changes, or client joins. Native theme persistence and file-dialog flows have not been manually verified. Desktop automation reported a window-bounds error during appearance interaction and later detected user activity; further automated input was stopped to leave the app available for review.
+
+## First live website-join test
+
+After the user reinstalled Ferns, the user enabled integration and reported that the client launched normally from the website. Read-only follow-up inspection confirmed:
+
+- Both original Ferns launcher files are present.
+- Both `ferns2026` and `ferns-launcher` handler commands are managed by SOLstrap.
+- Integration recovery information is present.
+- The running `Player/RobloxPlayerBeta.exe` process was started by `Player/FernsLauncher.exe`.
+
+This establishes one user-confirmed successful website launch with integration enabled. It does not establish repeated joins, rejoining an active session, every launch route, restoration behavior on this machine, or long-session stability. Those remain separate checks.
+
+## CoreGui investigation
+
+The installed player has one loose Lua file, `content/scripts/CoreScripts/PerformanceStatsManagerScript.lua`. Its existing diagnostic code attempts to require Chrome/CorePackages services and emits `[COREDBG]` markers. This is evidence of a possible script integration point, not proof of execution or successful customization. No such markers were found in the recent logs inspected so far, and those inspected player logs predate the latest successful join. The next investigation is to locate current session logging and establish whether this script executes before choosing a reversible CoreGui proof of concept. SOLstrap has not modified this script.
 
 ## Manual acceptance checks before a community alpha
 
