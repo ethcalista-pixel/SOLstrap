@@ -25,6 +25,11 @@ pub struct LogEvidence {
     pub probe_write_succeeded: bool,
     pub probe_write_failed: bool,
     pub exception_markers: usize,
+    pub access_violation_markers: usize,
+    pub out_of_memory_markers: usize,
+    pub dns_failure_markers: usize,
+    pub tls_failure_markers: usize,
+    pub connection_failure_markers: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -137,6 +142,11 @@ fn inspect_log(path: &Path) -> Result<LogEvidence> {
         probe_write_succeeded: false,
         probe_write_failed: false,
         exception_markers: 0,
+        access_violation_markers: 0,
+        out_of_memory_markers: 0,
+        dns_failure_markers: 0,
+        tls_failure_markers: 0,
+        connection_failure_markers: 0,
     };
     for section in sections {
         scan_markers(&String::from_utf8_lossy(&section), &mut evidence);
@@ -146,6 +156,34 @@ fn inspect_log(path: &Path) -> Result<LogEvidence> {
 
 fn scan_markers(text: &str, evidence: &mut LogEvidence) {
     for line in text.lines() {
+        let lower = line.to_ascii_lowercase();
+        if lower.contains("exception_access_violation") || lower.contains("0xc0000005") {
+            evidence.access_violation_markers += 1;
+        }
+        if lower.contains("std::bad_alloc")
+            || lower.contains("outofmemoryexception")
+            || lower.contains("out of memory")
+        {
+            evidence.out_of_memory_markers += 1;
+        }
+        if lower.contains("curle_couldnt_resolve_host")
+            || lower.contains("could not resolve host")
+            || lower.contains("getaddrinfo failed")
+        {
+            evidence.dns_failure_markers += 1;
+        }
+        if lower.contains("certificate_verify_failed")
+            || lower.contains("certificate verify failed")
+            || lower.contains("certificate has expired")
+        {
+            evidence.tls_failure_markers += 1;
+        }
+        if lower.contains("curle_couldnt_connect")
+            || lower.contains("connection timed out")
+            || lower.contains("connection refused")
+        {
+            evidence.connection_failure_markers += 1;
+        }
         if let Some((_, marker)) = line.split_once("[SOLSTRAP_PROBE_V1]") {
             evidence.probe_started |= marker.trim() == "started";
             if let Some((_, value)) = marker.split_once("CoreGui write ok=") {
@@ -231,5 +269,35 @@ mod tests {
         assert!(result.probe_started && result.probe_write_succeeded);
         assert!(!result.probe_write_failed);
         assert!(!result.chrome_require_succeeded);
+    }
+
+    #[test]
+    fn failure_clues_are_separate_and_raw_text_is_not_exported() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = log_file(temp.path(), "version_Player_C_last.log", b"EXCEPTION_ACCESS_VIOLATION 0xc0000005\nstd::bad_alloc\nCURLE_COULDNT_RESOLVE_HOST ticket=private-secret\nCERTIFICATE_VERIFY_FAILED\nconnection timed out\n");
+        let result = inspect_log(&path).unwrap();
+        assert_eq!(result.access_violation_markers, 1);
+        assert_eq!(result.out_of_memory_markers, 1);
+        assert_eq!(result.dns_failure_markers, 1);
+        assert_eq!(result.tls_failure_markers, 1);
+        assert_eq!(result.connection_failure_markers, 1);
+        assert!(!serde_json::to_string(&result)
+            .unwrap()
+            .contains("private-secret"));
+    }
+
+    #[test]
+    fn generic_connection_and_memory_words_are_not_failure_markers() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = log_file(temp.path(), "version_Player_D_last.log", b"memory usage: 1500 MB\nconnection established\ncertificate loaded\ntimeout configured: 30\n");
+        let result = inspect_log(&path).unwrap();
+        assert_eq!(
+            result.access_violation_markers
+                + result.out_of_memory_markers
+                + result.dns_failure_markers
+                + result.tls_failure_markers
+                + result.connection_failure_markers,
+            0
+        );
     }
 }

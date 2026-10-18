@@ -159,7 +159,12 @@ pub fn panel(ui: &mut Ui, title: &str, content: impl FnOnce(&mut Ui)) {
                         HEADER
                     },
                 );
-                ui.label(RichText::new(title).strong().size(15.0));
+                ui.label(
+                    RichText::new(title)
+                        .strong()
+                        .size(15.0)
+                        .color(if ui.visuals().dark_mode { CREAM } else { FIELD }),
+                );
             });
             ui.add_space(8.0);
             content(ui);

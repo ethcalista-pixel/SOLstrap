@@ -14,6 +14,8 @@ A native Rust desktop companion for the Ferns revival. Configure SOLstrap once, 
 - Read-only installation details, on-demand SHA-256 fingerprint, and local compatibility report export.
 - A searchable feature roadmap that identifies unavailable integrations.
 - Bounded scanning of the actual Ferns player-log location, with structured CoreGui and exception-marker evidence rather than exported log text.
+- Startup findings distinguish absent launchers from historical Defender detections. Native, read-only history inspection matches only this installation's player launcher and update staging file.
+- Session clues identify explicit access-violation, allocation-failure, DNS, certificate-validation, and connection-failure log markers without claiming a confirmed root cause.
 - An optional, reversible CoreGui compatibility test that backs up the existing loose script and attempts to display a small label on the next join.
 
 Normal launch routing does not modify game files. The optional **CoreGui compatibility test** temporarily prepends a test to one existing loose client script, preserves its original bytes, and offers restoration. Installing the test does not prove that Ferns loads it; confirm its label in a new session. Full CoreGui customization, crash monitoring/safe launch, FPS/memory tuning, screenshot capture, Discord presence, repair downloads, RoShade, Linux client support, and DLSS frame generation are not implemented yet. App appearance changes SOLstrap, not the in-game interface.
@@ -35,7 +37,7 @@ Build portable release executables:
 cargo build -p solstrap -p solstrap-launcher --release --locked
 ```
 
-The workspace output is `target/release/solstrap.exe` and `target/release/solstrap-launcher.exe`. Keep both files together in a stable folder. Open `solstrap.exe`, inspect the detected installation, and enable website integration in **Settings** when ready. Do not move the launcher while integration is enabled.
+The workspace output is `target/release/solstrap.exe` and `target/release/solstrap-launcher.exe`. Keep both files together in a stable folder. Open `solstrap.exe`, inspect the detected installation, and enable website integration in **Client** when ready. Do not move the launcher while integration is enabled.
 
 The current release build is portable; a packaged installer, automatic updater, and signing are future work.
 
@@ -64,6 +66,8 @@ Read-only CLI operations:
 ```
 
 The dry run validates the link envelope and selects a launcher but does not start Ferns or verify that Ferns accepts the placeholder. Do not paste real authentication links into issue reports.
+
+`--diagnose` returns `coregui` log evidence and a `health` section containing startup findings, session clues, and matching Defender events. Defender inspection covers up to 128 detection/action events from the last seven days; access errors and inspection limits are reported explicitly. A past detection does not establish the safety or identity of a reinstalled file. SOLstrap does not restore quarantined files or change protection settings.
 
 ## Data and privacy
 

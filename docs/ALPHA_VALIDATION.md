@@ -63,6 +63,16 @@ The revised app was opened for review. It uses a warm-charcoal work surface, a b
 
 ## Manual acceptance checks before a community alpha
 
+### Startup and failure diagnostics revision
+
+The CoreGui test was restored to its original bytes during the launcher investigation; no test is currently installed. The original website handlers are restored. After the user's latest reinstall, both original launchers and the player are present. A `ferns2026` dry run selects the player launcher and redacts the payload without executing it.
+
+The native Diagnostics page now reads matching Defender detection/action events through the Windows event API and shows startup findings and explicit session-failure markers. On this machine it successfully read eight historical matching events, reported zero missing-file findings after reinstall, and found no recognized failure markers in the inspected player-log sections. Historical events remain visible without implying that a reinstalled executable is identical or safe. Inspection errors and event limits are represented explicitly.
+
+25 isolated tests pass, including exact detection-path matching, exclusion of unrelated event data, malformed-history handling, and distinguishing a reinstalled launcher from one missing after a recorded quarantine. Workspace Clippy with warnings denied and the release build pass. The current executable sizes are 5,220,352 bytes for settings and 778,240 bytes for forwarding; these are build-specific.
+
+The Client and Diagnostics screens were inspected in the native app. A dark-theme heading contrast defect was corrected, and detection details are now collapsed by default to keep session findings accessible. No Defender settings were changed. A fresh live join, complete appearance coverage, and CoreGui execution confirmation remain pending.
+
 - In a desktop session, confirm navigation, app appearance persistence, search, settings import/export, and readable error states.
 - In a controlled installation, enable integration, join through the Ferns website, and verify both original launch routes still work.
 - Confirm repeat joins, joining with an existing client session, and launching from a browser while the settings app is closed.

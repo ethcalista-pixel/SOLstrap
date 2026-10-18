@@ -2,7 +2,7 @@
 
 use anyhow::{ensure, Context, Result};
 use solstrap_core::{
-    coregui_probe, data_dir, diagnostics, discovery,
+    coregui_probe, data_dir, diagnostics, discovery, health,
     integration::{self, NativeRegistry},
     launch,
     settings::Settings,
@@ -28,9 +28,12 @@ fn run() -> Result<()> {
         Some("--restore") if args.len() == 1 => integration::disable(&dir, &NativeRegistry),
         Some("--diagnose") if args.len() == 1 => {
             let installation = discovery::inspect(&Settings::load(&dir)?)?;
+            let logs = diagnostics::inspect_coregui(&installation.root);
             println!(
                 "{}",
-                serde_json::to_string_pretty(&diagnostics::inspect_coregui(&installation.root))?
+                serde_json::to_string_pretty(
+                    &serde_json::json!({"coregui":logs,"health":health::inspect(&installation,&logs)})
+                )?
             );
             Ok(())
         }

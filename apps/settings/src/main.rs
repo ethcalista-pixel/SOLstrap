@@ -209,6 +209,18 @@ impl App {
     }
 
     fn client(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if let Some(snapshot) = &self.snapshot {
+            if !snapshot.health.startup.is_empty() {
+                skin::panel(ui, "Startup needs attention", |ui| {
+                    for finding in &snapshot.health.startup {
+                        ui.label(RichText::new(&finding.title).color(skin::ORANGE).strong());
+                        ui.label(&finding.evidence);
+                        skin::hint(ui, &finding.next_step);
+                        ui.add_space(6.0);
+                    }
+                });
+            }
+        }
         skin::panel(ui, "Installation", |ui| {
             if let Some(snapshot) = &self.snapshot {
                 skin::field_row(
@@ -291,7 +303,7 @@ impl App {
                     skin::hint(ui, launcher.target.display().to_string());
                     skin::hint(
                         ui,
-                        "Repair or reinstall Ferns before enabling website integration.",
+                        "See the startup findings above before enabling website integration.",
                     );
                 }
                 if !snapshot.launcher_available {
@@ -458,7 +470,11 @@ impl App {
                 ui.horizontal_top(|ui| {
                     ui.add_sized(
                         [110.0, 22.0],
-                        egui::Label::new(RichText::new(name).strong()),
+                        egui::Label::new(
+                            RichText::new(name)
+                                .strong()
+                                .color(ui.visuals().text_color()),
+                        ),
                     );
                     skin::hint(ui, scope);
                 });
@@ -484,6 +500,74 @@ impl App {
     }
 
     fn diagnostics(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        skin::panel(ui, "Startup & protection history", |ui| {
+            if let Some(snapshot) = &self.snapshot {
+                for finding in &snapshot.health.startup {
+                    ui.label(
+                        RichText::new(&finding.title)
+                            .strong()
+                            .color(ui.visuals().text_color()),
+                    );
+                    ui.label(&finding.evidence);
+                    skin::hint(ui, &finding.next_step);
+                    ui.add_space(6.0);
+                }
+                if snapshot.health.startup.is_empty() {
+                    ui.label("Required player and launcher files are present.");
+                }
+                let report = &snapshot.health.defender;
+                if let Some(error) = &report.error {
+                    skin::hint(ui, error);
+                } else if report.events.is_empty() {
+                    ui.label("No matching launcher detections found in the inspected history.");
+                }
+                if !report.events.is_empty() {
+                    egui::CollapsingHeader::new(format!(
+                        "{} matching historical events",
+                        report.events.len()
+                    ))
+                    .show(ui, |ui| {
+                        for event in &report.events {
+                            ui.add_space(4.0);
+                            ui.label(RichText::new(&event.threat).color(skin::ORANGE));
+                            let time = event
+                                .time_utc
+                                .split('.')
+                                .next()
+                                .unwrap_or_default()
+                                .trim_end_matches('Z')
+                                .replace('T', " ");
+                            skin::hint(
+                                ui,
+                                format!("{time} UTC · event {} · {}", event.event_id, event.action),
+                            );
+                        }
+                    });
+                }
+                if report.limited {
+                    skin::hint(ui, "History reached the 128-event inspection limit.");
+                }
+                skin::hint(ui, "Read-only Defender history from the last seven days, matched to this installation's player launcher. Past detections do not establish the status or safety of a reinstalled file.");
+            }
+        });
+        skin::panel(ui, "Session failure clues", |ui| {
+            if let Some(snapshot) = &self.snapshot {
+                if snapshot.health.session.is_empty() {
+                    ui.label("No recognized failure markers in the inspected log sections.");
+                }
+                for finding in &snapshot.health.session {
+                    ui.label(
+                        RichText::new(&finding.title)
+                            .strong()
+                            .color(ui.visuals().text_color()),
+                    );
+                    ui.label(&finding.evidence);
+                    skin::hint(ui, &finding.next_step);
+                    ui.add_space(8.0);
+                }
+                skin::hint(ui, "Clues cover explicit access violations, allocation failures, DNS, certificate validation, and connection failures. They are evidence for investigation, not confirmed root causes.");
+            }
+        });
         skin::panel(ui, "Current player logs", |ui| {
             if let Some(snapshot) = &self.snapshot {
                 let report = &snapshot.coregui;
