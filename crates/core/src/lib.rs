@@ -1,3 +1,5 @@
+pub mod coregui_probe;
+pub mod diagnostics;
 pub mod discovery;
 pub mod integration;
 pub mod launch;

@@ -2,7 +2,7 @@
 
 use anyhow::{ensure, Context, Result};
 use solstrap_core::{
-    data_dir, discovery,
+    coregui_probe, data_dir, diagnostics, discovery,
     integration::{self, NativeRegistry},
     launch,
     settings::Settings,
@@ -26,8 +26,28 @@ fn run() -> Result<()> {
             Ok(())
         }
         Some("--restore") if args.len() == 1 => integration::disable(&dir, &NativeRegistry),
+        Some("--diagnose") if args.len() == 1 => {
+            let installation = discovery::inspect(&Settings::load(&dir)?)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&diagnostics::inspect_coregui(&installation.root))?
+            );
+            Ok(())
+        }
+        Some("--probe-install") if args.len() == 1 => {
+            let installation = discovery::inspect(&Settings::load(&dir)?)?;
+            ensure!(
+                installation.detected,
+                "Select a valid Ferns installation first"
+            );
+            coregui_probe::install(&dir, &installation.root)
+        }
+        Some("--probe-restore") if args.len() == 1 => {
+            let installation = discovery::inspect(&Settings::load(&dir)?)?;
+            coregui_probe::restore(&dir, &installation.root)
+        }
         Some("--help") | None => {
-            println!("SOLstrap launcher 0.1.0\n--inspect  Read-only client detection\n--dry-run <ferns-link>  Validate forwarding without launching\n--restore  Restore original website launch handlers\n<ferns-link>  Forward a website join after integration is enabled");
+            println!("SOLstrap launcher 0.1.0\n--inspect  Read-only client detection\n--diagnose  Read-only CoreGui/log evidence\n--dry-run <ferns-link>  Validate forwarding without launching\n--restore  Restore original website launch handlers\n--probe-install  Back up the loose script and add a temporary CoreGui test\n--probe-restore  Restore the original test script\n<ferns-link>  Forward a website join after integration is enabled");
             Ok(())
         }
         Some("--dry-run") if args.len() == 2 => {

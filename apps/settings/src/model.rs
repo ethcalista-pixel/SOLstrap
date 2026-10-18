@@ -1,7 +1,9 @@
 use anyhow::{ensure, Context, Result};
 use serde::Serialize;
 use solstrap_core::{
+    coregui_probe::{self, ProbeStatus},
     data_dir,
+    diagnostics::{self, CoreGuiReport},
     discovery::{self, Installation},
     integration::{self, IntegrationStatus, NativeRegistry},
     settings::Settings,
@@ -13,6 +15,9 @@ pub struct Snapshot {
     pub settings: Settings,
     pub installation: Installation,
     pub integration: IntegrationStatus,
+    pub coregui: CoreGuiReport,
+    pub probe: Option<ProbeStatus>,
+    pub probe_error: Option<String>,
     pub launcher_available: bool,
     pub version: &'static str,
     pub platform: &'static str,
@@ -33,8 +38,17 @@ pub fn launcher_path() -> Result<PathBuf> {
 pub fn snapshot() -> Result<Snapshot> {
     let dir = data_dir()?;
     let settings = Settings::load(&dir)?;
+    let installation = discovery::inspect(&settings)?;
+    let coregui = diagnostics::inspect_coregui(&installation.root);
+    let (probe, probe_error) = match coregui_probe::status(&dir, &installation.root) {
+        Ok(status) => (Some(status), None),
+        Err(error) => (None, Some(format!("{error:#}"))),
+    };
     Ok(Snapshot {
-        installation: discovery::inspect(&settings)?,
+        installation,
+        coregui,
+        probe,
+        probe_error,
         integration: integration::status(&dir, &NativeRegistry)?,
         launcher_available: launcher_path()?.is_file(),
         settings,
@@ -50,6 +64,11 @@ pub fn save(settings: &Settings) -> Result<()> {
         ensure!(
             integration::load_backup(&dir)?.is_none(),
             "Restore website integration before changing the client location"
+        );
+        let current = discovery::inspect(&previous)?;
+        ensure!(
+            !coregui_probe::status(&dir, &current.root)?.recovery_available,
+            "Restore the CoreGui test script before changing the client location"
         );
     }
     settings.validate()?;
@@ -72,6 +91,20 @@ pub fn set_integration(enabled: bool) -> Result<()> {
     }
 }
 
+pub fn set_probe(enabled: bool) -> Result<()> {
+    let dir = data_dir()?;
+    let installation = discovery::inspect(&Settings::load(&dir)?)?;
+    if enabled {
+        ensure!(
+            installation.detected,
+            "Select a valid Ferns installation first"
+        );
+        coregui_probe::install(&dir, &installation.root)
+    } else {
+        coregui_probe::restore(&dir, &installation.root)
+    }
+}
+
 #[derive(Serialize)]
 pub struct Feature {
     pub name: &'static str,
@@ -81,6 +114,8 @@ pub struct Feature {
 }
 
 pub const FEATURES: &[Feature] = &[
+    Feature { name: "CoreGui compatibility test", category: "Interface", status: "Available", description: "Optional test that backs up the loose script and attempts to show a small CoreGui label on the next join. Script execution and write access still need a real-session check." },
+    Feature { name: "Player-log evidence", category: "Diagnostics", status: "Available", description: "Bounded scanning of recent Ferns player logs with structured script, test, and exception markers. Raw log text is not exported." },
     Feature { name: "Website launch integration", category: "Client", status: "Available", description: "Forwards website joins to the original Ferns launchers. Requires both original launchers and valid registrations." },
     Feature { name: "Preferences and import/export", category: "Settings", status: "Available", description: "Validated, versioned global settings, native file dialogs, and local storage. No per-game profiles." },
     Feature { name: "Client fingerprint", category: "Diagnostics", status: "Available", description: "On-demand SHA-256 identification. Authenticity verification needs an authoritative manifest." },

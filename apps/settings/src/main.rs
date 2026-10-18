@@ -150,42 +150,32 @@ impl App {
 
     fn sidebar(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("navigation")
-            .exact_width(177.0)
+            .exact_width(204.0)
             .resizable(false)
             .frame(
                 egui::Frame::new()
                     .fill(skin::SIDEBAR)
-                    .inner_margin(Margin::symmetric(16, 22)),
+                    .inner_margin(Margin::symmetric(18, 24)),
             )
             .show(ctx, |ui| {
                 ui.label(
                     RichText::new("SOLstrap")
-                        .font(skin::display_font(36.0))
+                        .font(skin::display_font(26.0))
                         .color(skin::CREAM),
                 );
-                ui.label(RichText::new("For Ferns").size(12.0).color(skin::MUTED));
-                ui.add_space(27.0);
-                for page in Page::ALL {
-                    let active = self.page == page;
-                    let text = RichText::new(page.nav()).size(14.0).color(if active {
-                        skin::FIELD
-                    } else {
-                        skin::CREAM
-                    });
-                    let button = egui::Button::new(text)
-                        .fill(if active {
-                            skin::ORANGE
-                        } else {
-                            Color32::TRANSPARENT
-                        })
-                        .stroke(Stroke::NONE)
-                        .corner_radius(egui::CornerRadius {
-                            nw: 12,
-                            ne: 5,
-                            sw: 12,
-                            se: 12,
-                        });
-                    if ui.add_sized([ui.available_width(), 38.0], button).clicked() {
+                ui.label(
+                    RichText::new("Ferns companion")
+                        .size(12.0)
+                        .color(skin::MUTED),
+                );
+                ui.add_space(30.0);
+                for (index, page) in Page::ALL.into_iter().enumerate() {
+                    if index == 5 {
+                        ui.add_space(14.0);
+                        ui.separator();
+                        ui.add_space(8.0);
+                    }
+                    if skin::navigation(ui, page.nav(), self.page == page, index) {
                         self.page = page;
                         self.search.clear();
                     }
@@ -193,12 +183,7 @@ impl App {
                 }
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                     ui.label(
-                        RichText::new("0.1.0 development alpha")
-                            .color(skin::MUTED)
-                            .size(11.0),
-                    );
-                    ui.label(
-                        RichText::new("Rust · native desktop")
+                        RichText::new("Version 0.1.0 · Alpha")
                             .color(skin::MUTED)
                             .size(11.0),
                     );
@@ -244,7 +229,7 @@ impl App {
             ui.add_space(7.0);
             ui.label("Installation folder");
             ui.horizontal(|ui| {
-                let width = (ui.available_width() - 155.0).max(150.0);
+                let width = (ui.available_width() - 180.0).max(120.0);
                 ui.add_sized(
                     [width, 33.0],
                     egui::TextEdit::singleline(&mut self.root_input)
@@ -349,9 +334,113 @@ impl App {
         });
     }
 
-    fn interface(&mut self, ui: &mut egui::Ui) {
+    fn interface(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        skin::panel(ui, "Test CoreGui access", |ui| {
+            ui.label("Check whether Ferns loads the loose client script and allows it to display a CoreGui label.");
+            skin::hint(ui, "Install the test, then leave and rejoin your game. If supported, a small ‘SOLstrap - CoreGui test’ label appears at the top. Your existing script is backed up before the test is added. Restore it after testing; rejoin again to clear the label.");
+            let mut install = false;
+            let mut restore = false;
+            if let Some(snapshot) = &self.snapshot {
+                if let Some(error) = &snapshot.probe_error {
+                    ui.label(RichText::new(error).color(skin::ORANGE));
+                }
+                if let Some(probe) = &snapshot.probe {
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        install = skin::primary(
+                            ui,
+                            "Install compatibility test",
+                            snapshot.coregui.loose_script_present && !probe.recovery_available,
+                        )
+                        .clicked();
+                        restore = ui
+                            .add_enabled(
+                                probe.recovery_available,
+                                egui::Button::new("Restore original script"),
+                            )
+                            .clicked();
+                    });
+                    if probe.installed {
+                        skin::hint(ui, "Test installed for the next join. This does not alter the current game session.");
+                    }
+                    if probe.conflict {
+                        skin::hint(ui, "The script changed after installation. Restoration will preserve that change and retain the backup.");
+                    }
+                }
+                let successful = snapshot
+                    .coregui
+                    .logs
+                    .iter()
+                    .any(|log| log.probe_write_succeeded);
+                let failed = snapshot
+                    .coregui
+                    .logs
+                    .iter()
+                    .any(|log| log.probe_write_failed);
+                skin::field_row(
+                    ui,
+                    "Test log evidence",
+                    if successful {
+                        "A successful write marker was observed"
+                    } else if failed {
+                        "The script reported a failed CoreGui write"
+                    } else {
+                        "No CoreGui test result observed yet"
+                    },
+                );
+                skin::hint(ui, "Log markers may come from an earlier test. Confirm the visible label in your new session.");
+            }
+            if install {
+                self.operation(ctx, || model::set_probe(true), "Compatibility test installed. Rejoin Ferns, look for the label, then refresh this page.");
+            }
+            if restore {
+                self.operation(
+                    ctx,
+                    || model::set_probe(false),
+                    "Original script restored. Rejoin Ferns to clear any test label.",
+                );
+            }
+        });
+        skin::panel(ui, "Integration evidence", |ui| {
+            if let Some(snapshot) = &self.snapshot {
+                let report = &snapshot.coregui;
+                skin::field_row(
+                    ui,
+                    "Loose CoreScript",
+                    if report.loose_script_present {
+                        "Present in the client"
+                    } else {
+                        "Not found"
+                    },
+                );
+                skin::field_row(
+                    ui,
+                    "Player logs",
+                    &format!("{} recent files inspected", report.logs.len()),
+                );
+                skin::field_row(
+                    ui,
+                    "Execution marker",
+                    if report.logs.iter().any(|log| log.script_started_marker) {
+                        "Observed in a recent log"
+                    } else {
+                        "Not observed in inspected log sections"
+                    },
+                );
+                skin::field_row(
+                    ui,
+                    "Chrome module",
+                    if report.logs.iter().any(|log| log.chrome_require_succeeded) {
+                        "Successful require marker observed"
+                    } else {
+                        "No successful require marker observed"
+                    },
+                );
+                skin::hint(ui, "Existing diagnostic markers are clues. They do not prove SOLstrap can modify CoreGui. The compatibility test above is optional and changes only the backed-up test script.");
+            }
+        });
         skin::panel(ui, "CoreGui customization", |ui| {
-            ui.label("Client integration is under investigation. Game interface changes are not applied in this alpha.");
+            ui.label("The temporary test above checks access. Full customization controls are not available yet.");
             ui.add_space(9.0);
             for (name, scope) in [
                 ("Topbar", "Buttons, layout, and appearance"),
@@ -395,6 +484,46 @@ impl App {
     }
 
     fn diagnostics(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        skin::panel(ui, "Current player logs", |ui| {
+            if let Some(snapshot) = &self.snapshot {
+                let report = &snapshot.coregui;
+                skin::field_row(ui, "Log location", &report.log_folder.display().to_string());
+                if report.logs.is_empty() {
+                    ui.label(
+                        "No matching player logs are available yet. Join a game, then refresh.",
+                    );
+                }
+                for log in &report.logs {
+                    ui.add_space(3.0);
+                    ui.label(RichText::new(&log.file_name).size(12.0));
+                    skin::hint(
+                        ui,
+                        format!(
+                            "{:.1} KiB inspected · {} CoreScript markers · {} exception markers{}",
+                            log.inspected_bytes as f64 / 1024.0,
+                            log.core_debug_markers,
+                            log.exception_markers,
+                            if log.partial {
+                                " · head and tail only"
+                            } else {
+                                ""
+                            }
+                        ),
+                    );
+                }
+                if report.scan_errors > 0 {
+                    skin::hint(
+                        ui,
+                        format!(
+                            "{} log files or folders could not be read.",
+                            report.scan_errors
+                        ),
+                    );
+                }
+                ui.add_space(5.0);
+                skin::hint(ui, "Scans up to four Ferns player logs, bounded to 512 KiB each. Only counts and diagnostic booleans are exported; log text and authentication links are excluded. Exception markers alone do not establish the cause of a crash.");
+            }
+        });
         skin::panel(ui, "Client details", |ui| {
             if let Some(snapshot) = &self.snapshot {
                 skin::field_row(
@@ -416,7 +545,15 @@ impl App {
                     "Loose Lua scripts",
                     &snapshot.installation.core_script_files.to_string(),
                 );
-                skin::field_row(ui, "Game file changes", "None applied by SOLstrap");
+                skin::field_row(
+                    ui,
+                    "Game file changes",
+                    if snapshot.probe.as_ref().is_some_and(|probe| probe.installed) {
+                        "CoreGui compatibility test installed"
+                    } else {
+                        "No active SOLstrap test detected"
+                    },
+                );
                 skin::field_row(ui, "UI runtime", "Native Rust / egui · OpenGL renderer");
                 skin::hint(
                     ui,
@@ -612,21 +749,37 @@ impl eframe::App for App {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
-                    .fill(skin::CANVAS)
-                    .inner_margin(Margin::symmetric(28, 22)),
+                    .fill(skin::canvas(ctx))
+                    .inner_margin(Margin::symmetric(26, 24)),
             )
             .show(ctx, |ui| {
                 egui::Frame::new()
-                    .fill(skin::SIDEBAR)
-                    .corner_radius(16)
-                    .inner_margin(Margin::symmetric(15, 6))
+                    .fill(skin::HEADER)
+                    .corner_radius(egui::CornerRadius {
+                        nw: 18,
+                        ne: 18,
+                        sw: 4,
+                        se: 18,
+                    })
+                    .inner_margin(Margin::symmetric(20, 16))
                     .show(ui, |ui| {
+                        ui.label(
+                            RichText::new(self.page.title())
+                                .font(skin::display_font(27.0))
+                                .color(skin::FIELD),
+                        );
+                        ui.label(
+                            RichText::new(self.page.description())
+                                .color(skin::FIELD)
+                                .size(13.0),
+                        );
+                        ui.add_space(6.0);
                         ui.horizontal(|ui| {
                             let response = ui.add_sized(
                                 [(ui.available_width() - 105.0).max(180.0), 28.0],
                                 egui::TextEdit::singleline(&mut self.search)
                                     .hint_text("Search features…")
-                                    .frame(false)
+                                    .frame(true)
                                     .text_color(skin::CREAM),
                             );
                             if response.changed() {
@@ -634,7 +787,7 @@ impl eframe::App for App {
                             }
                             if ui
                                 .add(
-                                    egui::Button::new(RichText::new("Refresh").color(skin::CREAM))
+                                    egui::Button::new(RichText::new("Refresh").color(skin::FIELD))
                                         .fill(Color32::TRANSPARENT)
                                         .stroke(Stroke::NONE),
                                 )
@@ -645,18 +798,7 @@ impl eframe::App for App {
                             }
                         });
                     });
-                ui.add_space(19.0);
-                ui.label(
-                    RichText::new(self.page.title())
-                        .font(skin::display_font(31.0))
-                        .color(skin::CREAM),
-                );
-                ui.label(
-                    RichText::new(self.page.description())
-                        .color(skin::CREAM)
-                        .size(13.0),
-                );
-                ui.add_space(14.0);
+                ui.add_space(20.0);
                 if let Some(error) = &self.error {
                     egui::Frame::new()
                         .fill(skin::FIELD)
@@ -684,7 +826,7 @@ impl eframe::App for App {
                     .show(ui, |ui| {
                         match self.page {
                             Page::Client => self.client(ui, ctx),
-                            Page::Interface => self.interface(ui),
+                            Page::Interface => self.interface(ui, ctx),
                             Page::Graphics => self.planned(ui, "Graphics"),
                             Page::Capture => self.planned(ui, "Capture"),
                             Page::Presence => self.planned(ui, "Presence"),

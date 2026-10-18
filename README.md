@@ -13,8 +13,10 @@ A native Rust desktop companion for the Ferns revival. Configure SOLstrap once, 
 - Warm orange, espresso, and cream app design with dark, light, and system appearance and reduced-motion support.
 - Read-only installation details, on-demand SHA-256 fingerprint, and local compatibility report export.
 - A searchable feature roadmap that identifies unavailable integrations.
+- Bounded scanning of the actual Ferns player-log location, with structured CoreGui and exception-marker evidence rather than exported log text.
+- An optional, reversible CoreGui compatibility test that backs up the existing loose script and attempts to display a small label on the next join.
 
-**This alpha does not modify Roblox game files.** CoreGui customization, crash monitoring/safe launch, FPS/memory tuning, screenshot capture, Discord presence, repair downloads, RoShade, Linux client support, and DLSS frame generation are not implemented yet. App appearance changes SOLstrap, not the in-game interface.
+Normal launch routing does not modify game files. The optional **CoreGui compatibility test** temporarily prepends a test to one existing loose client script, preserves its original bytes, and offers restoration. Installing the test does not prove that Ferns loads it; confirm its label in a new session. Full CoreGui customization, crash monitoring/safe launch, FPS/memory tuning, screenshot capture, Discord presence, repair downloads, RoShade, Linux client support, and DLSS frame generation are not implemented yet. App appearance changes SOLstrap, not the in-game interface.
 
 ## Build and run
 
@@ -51,10 +53,13 @@ Restore from the app, or use:
 
 Restore before removing the portable application. If Ferns or another app has changed a handler after installation, SOLstrap leaves that handler alone and retains its backup for review.
 
+If you installed the CoreGui test, restore its script from **Interface** before removing SOLstrap. The matching recovery command is `solstrap-launcher.exe --probe-restore`. Script restoration preserves later changes made by Ferns or another tool and retains the backup if there is a conflict. Rejoin to clear a test label already loaded into a session.
+
 Read-only CLI operations:
 
 ```powershell
 .\solstrap-launcher.exe --inspect
+.\solstrap-launcher.exe --diagnose
 .\solstrap-launcher.exe --dry-run "ferns2026:diagnostic-placeholder"
 ```
 
@@ -63,6 +68,8 @@ The dry run validates the link envelope and selects a launcher but does not star
 ## Data and privacy
 
 App preferences and integration recovery information are local files under `%LOCALAPPDATA%\SOLstrap`. There is no telemetry or diagnostic upload endpoint in this alpha. Exports contain local paths and configuration; review them before sharing. A locally calculated hash identifies a file and is not an authenticity guarantee.
+
+The CoreGui test backup contains the original local script and is never included in report exports. Log inspection checks at most four Ferns player logs, up to 512 KiB per file, and exports only filenames, timestamps, sizes, marker counts, and diagnostic booleans. Large logs are sampled at the head and tail; absent markers are not proof that a script never ran.
 
 ## Checks
 

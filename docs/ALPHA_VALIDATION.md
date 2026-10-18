@@ -47,6 +47,20 @@ This establishes one user-confirmed successful website launch with integration e
 
 The installed player has one loose Lua file, `content/scripts/CoreScripts/PerformanceStatsManagerScript.lua`. Its existing diagnostic code attempts to require Chrome/CorePackages services and emits `[COREDBG]` markers. This is evidence of a possible script integration point, not proof of execution or successful customization. No such markers were found in the recent logs inspected so far, and those inspected player logs predate the latest successful join. The next investigation is to locate current session logging and establish whether this script executes before choosing a reversible CoreGui proof of concept. SOLstrap has not modified this script.
 
+### Log-location discovery and compatibility test
+
+Current player logs were subsequently located at `Ferns/Roblox/logs`, inside the Ferns installation root. The latest available join log also contained no existing `[COREDBG]` markers. This does not establish whether source loading or output logging is responsible.
+
+The native Interface page now exposes a reversible compatibility test. It preserves the original loose script in a local integrity-checked backup and prepends a self-contained task that attempts to create a small CoreGui label. The test does not touch the executable or join payload. Restoration requires the expected patched hash or the unchanged original hash; later script changes are preserved and the backup retained. A new join and visual confirmation remain necessary to establish that the test executes.
+
+The Diagnostics page scans up to four recent player logs, with at most 512 KiB per log. Large logs are sampled at the head and tail without merging boundary fragments. Reports contain only log metadata, counters, and booleans; raw log text and source backups are excluded.
+
+Updated automated checks: 20 tests pass, including original-byte restoration, idempotent test installation, interrupted-install recovery, UTF-8 BOM preservation, backup integrity, external-change conflicts, bounded log sampling, and structured evidence extraction. Strict workspace Clippy and formatting checks pass. Native visual review of this theme revision and real-session CoreGui test results are recorded separately after the build is checked.
+
+The revised native executables built successfully. On the actual installed loose script, installing the test, restoring it, and comparing SHA-256 confirmed exact original-byte restoration. Explicit child-process exit codes were zero for both restore and install. The test was then reinstalled for the user's next join, with its local recovery backup present. No in-game result is claimed yet. Read-only diagnostics located one player log with zero scan errors and no previous SOLstrap test result.
+
+The revised app was opened for review. It uses a warm-charcoal work surface, a burnt-orange header, aligned vector-icon navigation, Segoe UI typography, quieter section headings, and corrected form-control widths. Desktop activity overlapped the observation, so automated checks of every page and visual state remain pending.
+
 ## Manual acceptance checks before a community alpha
 
 - In a desktop session, confirm navigation, app appearance persistence, search, settings import/export, and readable error states.
