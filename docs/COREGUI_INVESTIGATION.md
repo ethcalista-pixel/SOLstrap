@@ -58,8 +58,6 @@ The next controlled experiment uses the normal `Player/ClientSettings/ClientAppS
 
 This developer-only trial stores the original settings bytes and hashes in `%LOCALAPPDATA%/SOLstrap/coregui-loader-trial.json` before changing the file. That backup can contain existing client configuration and must remain local; it is not exported or committed. Restore through the updated Interface page's **Restore script / loader trial** action, or `solstrap-launcher.exe --coregui-loader-test-restore`. Restoration preserves later file changes and retains recovery on conflict. Existing font modifications are independent.
 
-## Current log source
-
 ## Local-loader trial result
 
 The user restarted after installing the complete loader-plus-probe trial and again reported no label. Follow-up inspection confirmed the expected trial settings and probe were still installed, with no conflict. The new player process started at 08:15 BST on 19 October 2026. A full scan of that session's 739,369-byte log found zero `SOLSTRAP_PROBE_V1` markers and two references to the InExperience bundle path. No module-source-empty or cannot-compile marker was found. This trial did not demonstrate source execution. These observations do not distinguish an ignored setting from another loader path taking precedence.
