@@ -92,6 +92,7 @@ struct App {
     color_draft: Option<palette_editor::Editor>,
     solar_field: solar::Field,
     theme_library: theme_library::Editor,
+    last_session_refresh: f64,
 }
 
 impl App {
@@ -111,6 +112,7 @@ impl App {
             color_draft: None,
             solar_field: Default::default(),
             theme_library: theme_library::Editor::new(),
+            last_session_refresh: 0.0,
         };
         app.refresh(&cc.egui_ctx);
         // A local recovery seed lets this process recreate missing AppData
@@ -929,6 +931,49 @@ impl App {
     }
 
     fn diagnostics(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let mut export_session = None;
+        skin::panel(ui, "Player exits & crash reports", |ui| {
+            skin::hint(ui,"Website joins through the updated SOLstrap launcher are observed locally, even with this window closed. SOLstrap reads only the matching player process identity and exit status; it never injects into the client.");
+            if let Some(snapshot) = &self.snapshot {
+                if let Some(error) = &snapshot.crash_sessions_error {
+                    ui.colored_label(skin::ORANGE, error);
+                }
+                if snapshot.crash_sessions.is_empty() {
+                    ui.label("No sessions recorded yet. Your next website join starts monitoring.");
+                }
+                for session in snapshot.crash_sessions.iter().take(12) {
+                    let explanation =
+                        solstrap_core::crashes::explain(session, solstrap_core::crashes::now());
+                    egui::CollapsingHeader::new(format!("{} · {} min ago",explanation.title,solstrap_core::crashes::now().saturating_sub(session.started)/60)).id_salt(&session.id).default_open(snapshot.crash_sessions.first().is_some_and(|s|s.id==session.id)).show(ui,|ui|{
+                        ui.label(RichText::new(&explanation.evidence).color(if explanation.abnormal{skin::ORANGE}else{ui.visuals().text_color()}));
+                        skin::hint(ui,&explanation.next_step);
+                        if let Some(start)=session.player_started{ui.label(format!("Observed interval since player start: {} seconds{}",session.ended.unwrap_or_else(solstrap_core::crashes::now).saturating_sub(start),if session.ended.is_none(){" (no final exit recorded yet)"}else{""}));}
+                        if !session.clues.is_empty(){
+                            ui.add_space(6.0);ui.strong("Possible related log clues — ownership unverified");
+                            for clue in &session.clues{
+                                skin::hint(ui,format!("{} · {}{}",clue.file_name,if clue.shared_folder{"shared Roblox folder"}else{"Ferns log folder"},if clue.partial{" · sampled log"}else{""}));
+                                let clues=[(clue.access_violation,"access-violation"),(clue.allocation_failure,"allocation-failure"),(clue.dns_failure,"DNS failure"),(clue.tls_failure,"certificate-validation failure"),(clue.connection_failure,"connection failure"),(clue.exceptions,"exception")];
+                                let found=clues.iter().filter(|(count,_)|*count>0).map(|(count,name)|format!("{count} {name} marker(s)")).collect::<Vec<_>>();
+                                ui.label(if found.is_empty(){"No recognized failure markers in sampled sections.".into()}else{found.join(" · ")});
+                            }
+                            skin::hint(ui,"Only newly seen logs modified during this session are listed. Other Roblox clients may write to the shared folder. A marker is a clue, not a confirmed cause.");
+                        }
+                        if ui.button("Export session summary…").clicked(){export_session=Some(session.clone());}
+                    });
+                }
+                skin::hint(ui,"The newest 12 of up to 32 retained sessions are shown. Sleep or an interrupted observer can leave an unknown outcome. No raw logs, join links, or crash dumps are collected.");
+            }
+        });
+        if let Some(session) = export_session {
+            if let Some(path) = rfd::FileDialog::new()
+                .set_title("Export local session summary")
+                .set_file_name("solstrap-session.json")
+                .add_filter("JSON", &["json"])
+                .save_file()
+            {
+                self.record(solstrap_core::crashes::export(&session,&path),"Session summary exported locally. No raw log text or join links were included.");
+            }
+        }
         skin::panel(ui, "Startup & protection history", |ui| {
             if let Some(snapshot) = &self.snapshot {
                 for finding in &snapshot.health.startup {
@@ -1268,6 +1313,22 @@ impl eframe::App for App {
             self.refresh(ctx);
         }
         self.window_focused = focused;
+        if self.page == Page::Diagnostics && focused {
+            let time = ctx.input(|i| i.time);
+            if time - self.last_session_refresh >= 3.0 {
+                if let Some(snapshot) = &mut self.snapshot {
+                    match solstrap_core::crashes::history(&snapshot.data_directory) {
+                        Ok(s) => {
+                            snapshot.crash_sessions = s;
+                            snapshot.crash_sessions_error = None;
+                        }
+                        Err(e) => snapshot.crash_sessions_error = Some(format!("{e:#}")),
+                    }
+                }
+                self.last_session_refresh = time;
+            }
+            ctx.request_repaint_after(std::time::Duration::from_secs(3));
+        }
         if let Some(job) = &self.hash_job {
             match job.try_recv() {
                 Ok(Ok(hash)) => {

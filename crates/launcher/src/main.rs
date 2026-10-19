@@ -2,7 +2,7 @@
 
 use anyhow::{ensure, Context, Result};
 use solstrap_core::{
-    coregui_loader_trial, coregui_probe, data_dir, diagnostics, discovery, health,
+    coregui_loader_trial, coregui_probe, crashes, data_dir, diagnostics, discovery, health,
     integration::{self, NativeRegistry},
     interface_colors, interface_font, launch,
     settings::Settings,
@@ -13,6 +13,7 @@ fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let dir = data_dir()?;
     match args.first().map(String::as_str) {
+        Some("--watch-session") if args.len() == 2 => crashes::watch(&dir, &args[1]),
         Some("--inspect") if args.len() == 1 => {
             let settings = Settings::load(&dir)?;
             let installation = discovery::inspect(&settings)?;
@@ -96,7 +97,10 @@ fn run() -> Result<()> {
         }
         Some(_) if args.len() == 1 => {
             let target = target_for(&args[0], &dir, true)?;
-            Command::new(&target)
+            let root = discovery::inspect(&Settings::load(&dir)?)?.root;
+            // Diagnostic failures must never prevent the authorized website join.
+            let session = crashes::prepare(&dir, &root).ok();
+            let launched = Command::new(&target)
                 .arg(&args[0])
                 .current_dir(
                     target
@@ -104,7 +108,20 @@ fn run() -> Result<()> {
                         .context("Launcher has no parent directory")?,
                 )
                 .spawn()
-                .context("Ferns could not be started. Open SOLstrap to inspect the installation")?;
+                .context("Ferns could not be started. Open SOLstrap to inspect the installation");
+            if launched.is_err() {
+                if let Some(id) = &session {
+                    crashes::failed(&dir, id);
+                }
+            }
+            launched?;
+            if let Some(id) = session {
+                let observer = std::env::current_exe()
+                    .and_then(|exe| Command::new(exe).args(["--watch-session", &id]).spawn());
+                if observer.is_err() {
+                    crashes::observer_failed(&dir, &id);
+                }
+            }
             Ok(())
         }
         _ => anyhow::bail!("Invalid launcher arguments. Use --help for available commands"),

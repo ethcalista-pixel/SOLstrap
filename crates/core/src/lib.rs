@@ -1,5 +1,6 @@
 pub mod coregui_loader_trial;
 pub mod coregui_probe;
+pub mod crashes;
 pub mod diagnostics;
 pub mod discovery;
 pub mod health;

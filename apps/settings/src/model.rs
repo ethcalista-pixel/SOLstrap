@@ -3,7 +3,7 @@ use serde::Serialize;
 use solstrap_core::{
     coregui_loader_trial,
     coregui_probe::{self, ProbeStatus},
-    data_dir,
+    crashes, data_dir,
     diagnostics::{self, CoreGuiReport},
     discovery::{self, Installation},
     health::{self, HealthReport},
@@ -175,6 +175,8 @@ pub struct Snapshot {
     pub integration: IntegrationStatus,
     pub coregui: CoreGuiReport,
     pub health: HealthReport,
+    pub crash_sessions: Vec<crashes::Session>,
+    pub crash_sessions_error: Option<String>,
     pub probe: Option<ProbeStatus>,
     pub probe_error: Option<String>,
     pub loader_trial: Option<coregui_loader_trial::Status>,
@@ -211,6 +213,10 @@ pub fn snapshot() -> Result<Snapshot> {
     let coregui =
         diagnostics::inspect_coregui_with_shared(&installation.root, shared_logs.as_deref());
     let health = health::inspect(&installation, &coregui);
+    let (crash_sessions, crash_sessions_error) = match crashes::history(&dir) {
+        Ok(s) => (s, None),
+        Err(e) => (vec![], Some(format!("{e:#}"))),
+    };
     let (probe, probe_error) = match coregui_probe::status(&dir, &installation.root) {
         Ok(status) => (Some(status), None),
         Err(error) => (None, Some(format!("{error:#}"))),
@@ -241,6 +247,8 @@ pub fn snapshot() -> Result<Snapshot> {
         installation,
         coregui,
         health,
+        crash_sessions,
+        crash_sessions_error,
         probe,
         probe_error,
         loader_trial,
@@ -383,7 +391,8 @@ pub const FEATURES: &[Feature] = &[
     Feature { name: "Screenshots and gallery", category: "Capture", status: "Planned", description: "Configurable capture hotkey, save location, gallery, and optional CoreGui hiding where supported." },
     Feature { name: "Discord presence", category: "Presence", status: "Planned", description: "Optional session presence with privacy controls. Requires a project Discord application ID." },
     Feature { name: "Startup and failure clues", category: "Diagnostics", status: "Available", description: "Missing-launcher guidance, matching read-only Defender history, and bounded log clues for access violations, allocation failures, DNS, TLS, and connection failures. Findings do not establish root causes." },
-    Feature { name: "Crash reports and safe launch", category: "Diagnostics", status: "Planned", description: "Live session monitoring and recovery after repeated early crashes. Current diagnostics inspect existing log evidence." },
+    Feature { name: "Crash diagnostics", category: "Diagnostics", status: "Implemented · Windows website joins", description: "A native observer records matching new Ferns player processes and final exit codes, even with the settings window closed. Diagnostics shows retained sessions, readable status explanations, possible new-log clues, and a local summary export without raw logs or join links. Existing sessions, missed processes, stale observers, and interrupted monitoring keep an unknown outcome." },
+    Feature { name: "Safe launch", category: "Diagnostics", status: "Planned", description: "Automatic recovery after repeated early exits is not implemented. Current crash diagnostics reports evidence and supports manual use of existing restoration controls." },
     Feature { name: "Connection troubleshooting", category: "Diagnostics", status: "Partial", description: "Recognized DNS/TLS and connection-failure log clues are available. Endpoint checks, latency measurements, and authentication diagnosis remain planned." },
     Feature { name: "File verification and repair", category: "Diagnostics", status: "Needs upstream data", description: "Authoritative repair needs build-specific manifests and download sources from the Ferns maintainers." },
     Feature { name: "Linux client compatibility", category: "Platform", status: "Investigating", description: "Run the Windows client in an isolated Wine/Proton environment and validate real joins, rendering, input, and reconnects." },

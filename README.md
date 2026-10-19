@@ -16,12 +16,13 @@ A native Rust desktop companion for the Ferns revival. Configure SOLstrap once, 
 - Bounded scanning of the actual Ferns player-log location, with structured CoreGui and exception-marker evidence rather than exported log text.
 - Startup findings distinguish absent launchers from historical Defender detections. Native, read-only history inspection matches only this installation's player launcher and update staging file.
 - Session clues identify explicit access-violation, allocation-failure, DNS, certificate-validation, and connection-failure log markers without claiming a confirmed root cause.
+- Windows website-join crash diagnostics: a separate native observer follows the new player at the configured executable path, records final exit status, and keeps up to 32 local sessions. Diagnostics shows readable explanations, possible related log clues, and a summary export without raw logs, join links, or dumps.
 - An optional, reversible CoreGui compatibility test that backs up the existing loose script and attempts to display a small label on the next join.
 - An optional interface-font experiment that maps Builder Sans to bundled Builder Mono faces, with exact-byte restoration and conflict protection. The user confirmed the font change on Ferns 0.724; it can also affect game text using that family.
 - Native controls for saved player text size, transparency, and reduced motion, with recoverable, targeted XML changes. The user confirmed Largest text and that transparency zero makes the Escape-menu panel opaque on the tested build; reduced motion remains unverified. These preferences are shared with other Windows Roblox players.
 - Experimental native GUI palette controls for the pinned Ferns D3D11 build, with locally generated shader changes and verified original-file recovery. This is a rendering remap of dark neutral surfaces and blue accents, including matching game UI and image pixels; it does not edit CoreGui objects or layout.
 
-Normal launch routing does not modify game files. The optional **CoreGui compatibility test** temporarily prepends a test to one existing loose client script, preserves its original bytes, and offers restoration. Installing the test does not prove that Ferns loads it; confirm its label in a new session. Full CoreGui customization, crash monitoring/safe launch, FPS/memory tuning, screenshot capture, Discord presence, repair downloads, RoShade, Linux client support, and DLSS frame generation are not implemented yet. App appearance changes SOLstrap, not the in-game interface.
+Normal launch routing does not modify game files. The optional **CoreGui compatibility test** temporarily prepends a test to one existing loose client script, preserves its original bytes, and offers restoration. Installing the test does not prove that Ferns loads it; confirm its label in a new session. Full CoreGui customization, automatic safe launch, FPS/memory tuning, screenshot capture, Discord presence, repair downloads, RoShade, Linux client support, and DLSS frame generation are not implemented yet. App appearance changes SOLstrap, not the in-game interface.
 
 ## Build and run
 
@@ -87,6 +88,14 @@ The dry run validates the link envelope and selects a launcher but does not star
 `--diagnose` returns `coregui` log evidence and a `health` section containing startup findings, session clues, and matching Defender events. Defender inspection covers up to 128 detection/action events from the last seven days; access errors and inspection limits are reported explicitly. A past detection does not establish the safety or identity of a reinstalled file. SOLstrap does not restore quarantined files or change protection settings.
 
 ## Data and privacy
+
+### Player exit diagnostics
+
+The updated launcher starts a session observer after forwarding a website join. It watches for a **new** `Player/RobloxPlayerBeta.exe` matching the configured Ferns root, with PID and creation-time checks. It owns only limited-query/wait process handles and never reads process memory or injects code. Once attached it checks exit state once a second and persists a heartbeat every 15 seconds; it continues when the settings app is closed and exits after the player ends. Startup observation times out after 90 seconds, and an attached observer stops after 24 hours. A process that closes before capture, an existing player reused by a join, or an interrupted observer has an unknown outcome rather than a presumed crash.
+
+Open **Diagnostics → Player exits & crash reports** after a join. The list refreshes every three seconds while that page is focused, shows the newest 12 entries, and retains at most 32 in `%LOCALAPPDATA%/SOLstrap/sessions.json`. Exit code 0 is reported as an observed status, not proof that the game behaved correctly; nonzero exits can also result from forced termination. Recognized access-violation, stack-overflow, and allocation-failure statuses get specific explanations without attributing a faulty component. Safe launch and automatic restoration are separate, unimplemented features.
+
+Only newly seen log filenames with timestamps in the session window supply possible log clues. Their ownership is **unverified**, especially in the shared Roblox folder. Existing bounded log sampling still applies. **Export session summary** omits install paths, process baselines, raw log text, join links, and dumps; no reports are uploaded. Local session history includes the installation path and observer bookkeeping. Joins that bypass SOLstrap's updated launcher are not observed.
 
 App preferences and integration recovery information are local files under `%LOCALAPPDATA%\SOLstrap`. There is no telemetry or diagnostic upload endpoint in this alpha. Exports contain local paths and configuration; review them before sharing. A locally calculated hash identifies a file and is not an authenticity guarantee.
 

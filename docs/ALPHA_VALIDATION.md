@@ -101,6 +101,14 @@ These checks remain pending until explicitly recorded. CoreGui and experimental 
 
 ## 2026-10-19 GUI palette and editor validation
 
+### Native player-exit diagnostics
+
+Website forwarding now attempts to record a session and starts a separate native launcher observer. A failure to initialize monitoring does not prevent the original launcher from running. The observer excludes baseline processes, matches the configured player executable path and process creation time, holds only limited-query/wait handles, records final exit codes, and exits after completion. It does not collect join arguments, raw log text, process memory, or dumps. Waiting times out at 90 seconds; observation stops after 24 hours; missing heartbeats produce an unknown outcome. Up to 32 sessions are retained, evicting completed or stale records before active observers.
+
+Diagnostics displays the newest 12 sessions, durations, readable explanations, next steps, optional newly seen log-marker clues, and a local redacted summary export. Log ownership remains explicitly unverified. The view refreshes the history every three seconds while focused without rerunning the broader installation scan. Safe launch and automatic restoration remain unimplemented.
+
+Controlled Windows tests used a locally compiled, non-faulting fixture that exits with requested statuses. The observer captured 0, 0xC0000005, and 259, matched PID/creation identity, and ignored an identically named executable in another directory. A separate release-launcher `--watch-session` process also captured the expected status/PID with no settings window involved. No Ferns client was launched or terminated for these tests. Unit tests cover classification without overclaiming, PID reuse/baselines, duplicate-observer rejection, bounded retention preserving an active observer, corrupt-history preservation, stale monitoring, export redaction, and exclusion of pre-existing logs. A real website join and ordinary player exit remain the final manual integration check.
+
 ### Gradient and animation preview build
 
 The native palette editor now includes picker/hex input, two-color linear and radial fills, angle/spread controls, color fade, gradient flow, rainbow, cycle duration, and a pausable preview. These effects span the viewport; they do not know individual CoreGui element bounds. Preview motion honors the app's reduced-motion setting. Older palette records deserialize as solid colors. Palette drafts and incomplete hex edits remain in memory across refresh/focus changes until applied or explicitly discarded.
