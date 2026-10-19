@@ -57,6 +57,13 @@ pub fn inspect(installation: &Installation, logs: &CoreGuiReport) -> HealthRepor
 
 fn startup_findings(installation: &Installation, defender: &DefenderReport) -> Vec<Finding> {
     let mut findings = Vec::new();
+    if installation.android_guest_library {
+        findings.push(Finding {
+            title: "Android guest library detected".into(),
+            evidence: "This installation contains an ELF libroblox.so in the Android app directory. Diagnostics reads the compatibility host's client.log; Windows exit monitoring describes the host process only.".into(),
+            next_step: "Treat previous Windows-client shader and CoreGui tests as unverified for this build. A guest failure can occur while the Windows host remains open; compare current log evidence with the host exit report.".into(),
+        });
+    }
     if !installation.detected {
         findings.push(Finding { title: "Game executable is missing".into(), evidence: "The selected folder contains neither Player/Ferns.exe nor Player/RobloxPlayerBeta.exe.".into(), next_step: "Check the selected installation folder. Website integration needs a complete client installation.".into() });
     }

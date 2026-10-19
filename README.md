@@ -105,6 +105,8 @@ The CoreGui test backup contains the original local script and is never included
 
 Log discovery compares the Ferns log folder with the shared `%LOCALAPPDATA%/Roblox/logs` folder and selects the one with the newest player log. The shared folder may contain other Roblox installations' sessions; its origin is shown explicitly. Font-test backups are also excluded from reports.
 
+For installations containing the Android app's ELF `libroblox.so`, diagnostics instead reads the compatibility host's `Ferns/logs/client.log`. It recognizes explicit TLS-connection and HTTP-timeout markers without exporting raw text. This persistent log may span sessions; existing log filenames remain excluded from individual session summaries. Windows process-exit reports describe the host and cannot prove the Android guest's outcome. Earlier Windows shader/CoreGui results are unverified for this client architecture.
+
 ## Checks
 
 ```powershell

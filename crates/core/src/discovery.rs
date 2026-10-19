@@ -12,6 +12,7 @@ use std::{
 pub struct Installation {
     pub root: PathBuf,
     pub detected: bool,
+    pub android_guest_library: bool,
     pub player: PathBuf,
     pub player_bytes: Option<u64>,
     pub launchers: Vec<Launcher>,
@@ -29,6 +30,16 @@ pub const PROTOCOLS: [(&str, &str); 2] = [
     ("ferns2026", "Player/FernsLauncher.exe"),
     ("ferns-launcher", "Client/FernsLauncher.exe"),
 ];
+
+/// Evidence of the Android guest library, not a guarantee of host compatibility.
+pub fn android_library_present(root: &Path) -> bool {
+    let path = root.join("Player/root/data/app/com.ferns.client/lib/x86_64/libroblox.so");
+    let mut magic = [0u8; 4];
+    File::open(path)
+        .and_then(|mut file| file.read_exact(&mut magic))
+        .is_ok()
+        && magic == *b"\x7fELF"
+}
 
 pub fn inspect(settings: &Settings) -> Result<Installation> {
     let root = match &settings.client_root {
@@ -69,6 +80,7 @@ pub fn inspect(settings: &Settings) -> Result<Installation> {
         .collect();
     let core_script_files = count_lua(&root.join("Player/content/scripts"), 0);
     Ok(Installation {
+        android_guest_library: android_library_present(&root),
         root,
         detected,
         player,

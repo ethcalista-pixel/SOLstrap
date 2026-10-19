@@ -50,7 +50,9 @@ pub fn inspect_coregui(root: &Path) -> CoreGuiReport {
 pub fn inspect_coregui_with_shared(root: &Path, shared: Option<&Path>) -> CoreGuiReport {
     let script_path =
         root.join("Player/content/scripts/CoreScripts/PerformanceStatsManagerScript.lua");
-    let own = root.join("Roblox/logs");
+    // The Android compatibility host writes one persistent log outside Roblox/logs.
+    let host_log = crate::discovery::android_library_present(root);
+    let own = root.join(if host_log { "logs" } else { "Roblox/logs" });
     let latest = |folder: &Path| {
         fs::read_dir(folder)
             .ok()
@@ -72,13 +74,14 @@ pub fn inspect_coregui_with_shared(root: &Path, shared: Option<&Path>) -> CoreGu
             .max()
     };
     let log_folder = shared
+        .filter(|_| !host_log)
         .filter(|folder| latest(folder) > latest(&own))
         .map(Path::to_owned)
-        .unwrap_or(own);
+        .unwrap_or_else(|| own.clone());
     let mut report = CoreGuiReport {
         loose_script_present: script_path.is_file(),
         script_path,
-        shared_log_folder: log_folder != root.join("Roblox/logs"),
+        shared_log_folder: log_folder != own,
         log_folder,
         logs: Vec::new(),
         scan_errors: 0,
@@ -99,7 +102,12 @@ pub fn inspect_coregui_with_shared(root: &Path, shared: Option<&Path>) -> CoreGu
                 return None;
             }
             let name = entry.file_name().to_string_lossy().into_owned();
-            if !name.contains("_Player_") || !name.ends_with(".log") {
+            let accepted = if host_log {
+                name == "client.log"
+            } else {
+                name.contains("_Player_") && name.ends_with(".log")
+            };
+            if !accepted {
                 return None;
             }
             let metadata = entry.metadata().ok()?;
@@ -206,12 +214,14 @@ fn scan_markers(text: &str, evidence: &mut LogEvidence) {
         if lower.contains("certificate_verify_failed")
             || lower.contains("certificate verify failed")
             || lower.contains("certificate has expired")
+            || lower.contains("httperror: sslconnectfail")
         {
             evidence.tls_failure_markers += 1;
         }
         if lower.contains("curle_couldnt_connect")
             || lower.contains("connection timed out")
             || lower.contains("connection refused")
+            || lower.contains("httperror: timedout")
         {
             evidence.connection_failure_markers += 1;
         }
@@ -257,6 +267,41 @@ mod tests {
         assert!(report.logs.is_empty());
         assert_eq!(report.scan_errors, 0);
         assert!(!report.loose_script_present);
+    }
+
+    #[test]
+    fn android_host_log_wins_over_legacy_shared_logs_without_exporting_text() {
+        let temp = tempfile::tempdir().unwrap();
+        let library = temp
+            .path()
+            .join("Player/root/data/app/com.ferns.client/lib/x86_64/libroblox.so");
+        fs::create_dir_all(library.parent().unwrap()).unwrap();
+        fs::write(&library, b"not ELF").unwrap();
+        assert!(!crate::discovery::android_library_present(temp.path()));
+        fs::write(&library, b"\x7fELFfixture").unwrap();
+        assert!(crate::discovery::android_library_present(temp.path()));
+        let folder = temp.path().join("logs");
+        fs::create_dir(&folder).unwrap();
+        fs::write(
+            folder.join("client.log"),
+            b"HttpError: SslConnectFail ticket=private-secret\nHttpError: Timedout\n",
+        )
+        .unwrap();
+        fs::write(folder.join("launcher.log"), b"out of memory").unwrap();
+        let shared = temp.path().join("shared");
+        fs::create_dir(&shared).unwrap();
+        fs::write(shared.join("new_Player_session.log"), b"out of memory").unwrap();
+        let report = inspect_coregui_with_shared(temp.path(), Some(&shared));
+        assert_eq!(report.log_folder, folder);
+        assert!(!report.shared_log_folder);
+        assert_eq!(report.logs.len(), 1);
+        assert_eq!(report.logs[0].file_name, "client.log");
+        assert_eq!(report.logs[0].tls_failure_markers, 1);
+        assert_eq!(report.logs[0].connection_failure_markers, 1);
+        assert_eq!(report.logs[0].out_of_memory_markers, 0);
+        assert!(!serde_json::to_string(&report)
+            .unwrap()
+            .contains("private-secret"));
     }
 
     #[test]

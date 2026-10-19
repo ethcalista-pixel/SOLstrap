@@ -357,6 +357,9 @@ impl App {
                 if let Some(package) = &snapshot.execution_package {
                     ui.colored_label(skin::ORANGE,format!("Running with app-package identity: {package}. Handler and AppData changes can be virtualized. Open SOLstrap from File Explorer to enable real browser integration."));
                 }
+                if snapshot.integration.recovery_available && !snapshot.integration.enabled {
+                    ui.colored_label(skin::ORANGE, "Website handlers changed since integration was enabled. Joins using the external handler bypass SOLstrap and are not recorded. Restore original handlers, then enable integration again.");
+                }
                 ui.add_space(7.0);
                 for launcher in snapshot
                     .installation
@@ -434,6 +437,9 @@ impl App {
         skin::panel(ui, "GUI palette · Experimental", |ui| {
             skin::hint(ui, "Recolors dark neutral GUI surfaces and blue accents on the tested Ferns D3D11 build. Matching game UI and image colors may also change. This does not change layout or individual CoreGui properties. Fully close the player before applying; join again to load the palette.");
             if let Some(snapshot) = &self.snapshot {
+                if snapshot.installation.android_guest_library {
+                    ui.colored_label(skin::ORANGE, "Android guest library detected. This palette edits the previous Windows D3D11 pack; its effect on this client build is unverified. A leftover supported pack does not establish that the host uses it.");
+                }
                 if let Some(error) = &snapshot.interface_colors_error {
                     skin::hint(ui, error);
                 }

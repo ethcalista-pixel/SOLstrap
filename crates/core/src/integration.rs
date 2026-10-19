@@ -303,6 +303,7 @@ mod tests {
         let installation = Installation {
             root: temp.path().into(),
             detected: true,
+            android_guest_library: false,
             player: temp.path().join("player.exe"),
             player_bytes: None,
             launchers,
