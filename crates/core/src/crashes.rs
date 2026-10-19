@@ -10,6 +10,33 @@ use std::{
 mod process;
 const FILE: &str = "sessions.json";
 const MAX: usize = 32;
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LaunchStatus {
+    pub at: u64,
+    pub message: String,
+}
+pub fn launch_status(dir: &Path) -> Result<Option<LaunchStatus>> {
+    let path = dir.join("session-launch-status.json");
+    if !path.try_exists()? {
+        return Ok(None);
+    }
+    ensure!(
+        fs::metadata(&path)?.len() <= 4096,
+        "Launch status file exceeds its size limit"
+    );
+    Ok(Some(crate::read_json(&path)?))
+}
+pub fn note_launch(dir: &Path, message: &str) {
+    let message = message
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(256)
+        .collect();
+    let _ = crate::write_json(
+        &dir.join("session-launch-status.json"),
+        &LaunchStatus { at: now(), message },
+    );
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum State {
     Waiting,
@@ -352,6 +379,21 @@ pub fn export(s: &Session, path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn launch_receipt_is_bounded_and_invalid_data_is_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(launch_status(dir.path()).unwrap().is_none());
+        note_launch(dir.path(), &format!("ready\n{}", "x".repeat(300)));
+        let status = launch_status(dir.path()).unwrap().unwrap();
+        assert_eq!(status.message.chars().count(), 256);
+        assert!(!status.message.contains('\n'));
+        assert!(status.at > 0);
+        let path = dir.path().join("session-launch-status.json");
+        fs::write(&path, b"invalid").unwrap();
+        assert!(launch_status(dir.path()).is_err());
+        fs::write(&path, vec![b' '; 4097]).unwrap();
+        assert!(launch_status(dir.path()).is_err());
+    }
     fn session() -> Session {
         Session {
             id: "test".into(),

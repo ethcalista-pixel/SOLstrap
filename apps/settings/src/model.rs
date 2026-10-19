@@ -177,6 +177,9 @@ pub struct Snapshot {
     pub health: HealthReport,
     pub crash_sessions: Vec<crashes::Session>,
     pub crash_sessions_error: Option<String>,
+    pub execution_package: Option<String>,
+    pub session_launch_status: Option<crashes::LaunchStatus>,
+    pub session_launch_status_error: Option<String>,
     pub probe: Option<ProbeStatus>,
     pub probe_error: Option<String>,
     pub loader_trial: Option<coregui_loader_trial::Status>,
@@ -217,6 +220,10 @@ pub fn snapshot() -> Result<Snapshot> {
         Ok(s) => (s, None),
         Err(e) => (vec![], Some(format!("{e:#}"))),
     };
+    let (session_launch_status, session_launch_status_error) = match crashes::launch_status(&dir) {
+        Ok(s) => (s, None),
+        Err(e) => (None, Some(format!("{e:#}"))),
+    };
     let (probe, probe_error) = match coregui_probe::status(&dir, &installation.root) {
         Ok(status) => (Some(status), None),
         Err(error) => (None, Some(format!("{error:#}"))),
@@ -249,6 +256,9 @@ pub fn snapshot() -> Result<Snapshot> {
         health,
         crash_sessions,
         crash_sessions_error,
+        execution_package: solstrap_core::execution_package(),
+        session_launch_status,
+        session_launch_status_error,
         probe,
         probe_error,
         loader_trial,
@@ -334,6 +344,7 @@ pub fn recover_warm_palette(original: &std::path::Path) -> Result<()> {
 pub fn set_integration(enabled: bool) -> Result<()> {
     let dir = data_dir()?;
     if enabled {
+        ensure!(solstrap_core::execution_package().is_none(),"This instance has app-package identity, which can virtualize website handlers. Start SOLstrap from File Explorer before enabling integration.");
         let installation = discovery::inspect(&Settings::load(&dir)?)?;
         integration::enable(&dir, &installation, &launcher_path()?, &NativeRegistry)
     } else {

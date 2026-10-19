@@ -36,6 +36,32 @@ pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
     serde_json::from_slice(&bytes).context("The saved file is not a valid SOLstrap document")
 }
 
+/// A packaged development host can virtualize per-user registry and AppData.
+#[cfg(windows)]
+pub fn execution_package() -> Option<String> {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetCurrentPackageFullName(length: *mut u32, name: *mut u16) -> i32;
+    }
+    let mut length = 0;
+    unsafe {
+        if GetCurrentPackageFullName(&mut length, std::ptr::null_mut()) != 122 || length > 4096 {
+            return None;
+        }
+        let mut name = vec![0u16; length as usize];
+        if GetCurrentPackageFullName(&mut length, name.as_mut_ptr()) != 0 {
+            return None;
+        }
+        Some(String::from_utf16_lossy(
+            &name[..name.iter().position(|c| *c == 0).unwrap_or(name.len())],
+        ))
+    }
+}
+#[cfg(not(windows))]
+pub fn execution_package() -> Option<String> {
+    None
+}
+
 pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     let parent = path.parent().context("Document needs a parent directory")?;
     fs::create_dir_all(parent)?;

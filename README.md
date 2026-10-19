@@ -99,6 +99,8 @@ Only newly seen log filenames with timestamps in the session window supply possi
 
 App preferences and integration recovery information are local files under `%LOCALAPPDATA%\SOLstrap`. There is no telemetry or diagnostic upload endpoint in this alpha. Exports contain local paths and configuration; review them before sharing. A locally calculated hash identifies a file and is not an authenticity guarantee.
 
+Start SOLstrap from File Explorer when enabling website integration. An app-package development host can expose a separate registry and AppData view from your browser. SOLstrap detects package identity, labels that view, and disables enabling integration there. Diagnostics also shows the latest local launcher activity so a missing session can be distinguished from a website request that never reached SOLstrap.
+
 The CoreGui test backup contains the original local script and is never included in report exports. Log inspection checks at most four Ferns player logs, up to 512 KiB per file, and exports only filenames, timestamps, sizes, marker counts, and diagnostic booleans. Large logs are sampled at the head and tail; absent markers are not proof that a script never ran.
 
 Log discovery compares the Ferns log folder with the shared `%LOCALAPPDATA%/Roblox/logs` folder and selects the one with the newest player log. The shared folder may contain other Roblox installations' sessions; its origin is shown explicitly. Font-test backups are also excluded from reports.

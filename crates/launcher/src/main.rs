@@ -27,6 +27,7 @@ fn run() -> Result<()> {
                     "installation": installation,
                     "integration": integration::status(&dir, &NativeRegistry)?,
                     "data_dir": dir,
+                    "execution_package": solstrap_core::execution_package(),
                 }))?
             );
             Ok(())
@@ -96,10 +97,20 @@ fn run() -> Result<()> {
             Ok(())
         }
         Some(_) if args.len() == 1 => {
+            crashes::note_launch(&dir, "Website request reached SOLstrap.");
             let target = target_for(&args[0], &dir, true)?;
             let root = discovery::inspect(&Settings::load(&dir)?)?.root;
             // Diagnostic failures must never prevent the authorized website join.
-            let session = crashes::prepare(&dir, &root).ok();
+            let session = match crashes::prepare(&dir, &root) {
+                Ok(id) => Some(id),
+                Err(error) => {
+                    crashes::note_launch(
+                        &dir,
+                        &format!("Session monitoring could not initialize: {error}"),
+                    );
+                    None
+                }
+            };
             let launched = Command::new(&target)
                 .arg(&args[0])
                 .current_dir(
@@ -110,6 +121,7 @@ fn run() -> Result<()> {
                 .spawn()
                 .context("Ferns could not be started. Open SOLstrap to inspect the installation");
             if launched.is_err() {
+                crashes::note_launch(&dir, "The original Ferns launcher could not start.");
                 if let Some(id) = &session {
                     crashes::failed(&dir, id);
                 }
@@ -120,6 +132,12 @@ fn run() -> Result<()> {
                     .and_then(|exe| Command::new(exe).args(["--watch-session", &id]).spawn());
                 if observer.is_err() {
                     crashes::observer_failed(&dir, &id);
+                    crashes::note_launch(
+                        &dir,
+                        "Ferns launcher started, but the session observer could not start.",
+                    );
+                } else {
+                    crashes::note_launch(&dir, "Ferns launcher and session observer started.");
                 }
             }
             Ok(())

@@ -343,7 +343,9 @@ impl App {
                     skin::field_row(
                         ui,
                         &protocol.protocol,
-                        if protocol.managed {
+                        if protocol.managed && snapshot.execution_package.is_some() {
+                            "Managed in this package view only"
+                        } else if protocol.managed {
                             "SOLstrap enabled"
                         } else if protocol.registered {
                             "Original / external handler"
@@ -351,6 +353,9 @@ impl App {
                             "Not registered"
                         },
                     );
+                }
+                if let Some(package) = &snapshot.execution_package {
+                    ui.colored_label(skin::ORANGE,format!("Running with app-package identity: {package}. Handler and AppData changes can be virtualized. Open SOLstrap from File Explorer to enable real browser integration."));
                 }
                 ui.add_space(7.0);
                 for launcher in snapshot
@@ -374,6 +379,7 @@ impl App {
                     skin::hint(ui, "solstrap-launcher must be next to this executable.");
                 }
                 let ready = snapshot.installation.detected
+                    && snapshot.execution_package.is_none()
                     && snapshot.launcher_available
                     && snapshot
                         .installation
@@ -935,6 +941,15 @@ impl App {
         skin::panel(ui, "Player exits & crash reports", |ui| {
             skin::hint(ui,"Website joins through the updated SOLstrap launcher are observed locally, even with this window closed. SOLstrap reads only the matching player process identity and exit status; it never injects into the client.");
             if let Some(snapshot) = &self.snapshot {
+                if let Some(status) = &snapshot.session_launch_status {
+                    skin::hint(ui, format!("Last launcher activity: {}", status.message));
+                }
+                if let Some(error) = &snapshot.session_launch_status_error {
+                    ui.colored_label(skin::ORANGE, error);
+                }
+                if snapshot.execution_package.is_some() {
+                    ui.colored_label(skin::ORANGE,"This package-isolated instance may see different history and website handlers. Run SOLstrap from File Explorer to inspect ordinary browser joins.");
+                }
                 if let Some(error) = &snapshot.crash_sessions_error {
                     ui.colored_label(skin::ORANGE, error);
                 }
@@ -1323,6 +1338,13 @@ impl eframe::App for App {
                             snapshot.crash_sessions_error = None;
                         }
                         Err(e) => snapshot.crash_sessions_error = Some(format!("{e:#}")),
+                    }
+                    match solstrap_core::crashes::launch_status(&snapshot.data_directory) {
+                        Ok(s) => {
+                            snapshot.session_launch_status = s;
+                            snapshot.session_launch_status_error = None;
+                        }
+                        Err(e) => snapshot.session_launch_status_error = Some(format!("{e:#}")),
                     }
                 }
                 self.last_session_refresh = time;
