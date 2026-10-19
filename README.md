@@ -10,7 +10,7 @@ A native Rust desktop companion for the Ferns revival. Configure SOLstrap once, 
 - Native website-link forwarding, separate from the settings app.
 - Optional integration for `ferns2026` and `ferns-launcher`, with original command backups, partial-install recovery, and restoration that preserves third-party changes.
 - Versioned global settings, validation, import/export, and atomic file replacement.
-- Warm orange, espresso, and cream app design with dark, light, and system appearance and reduced-motion support.
+- Solar terminal interface: monospace typography, amber accents, numbered modules, a sun mark, and a dense dot grid over the entire interface with a fluid cursor wake. The low-opacity overlay covers navigation and panels without capturing input. Dark, light, and system appearance remain available. Cursor effects fade to idle, stop when unfocused, and respect reduced motion. Grid density is bounded on large displays.
 - Read-only installation details, on-demand SHA-256 fingerprint, and local compatibility report export.
 - A searchable feature roadmap that identifies unavailable integrations.
 - Bounded scanning of the actual Ferns player-log location, with structured CoreGui and exception-marker evidence rather than exported log text.

@@ -3,6 +3,7 @@
 mod model;
 mod palette_editor;
 mod skin;
+mod solar;
 
 use anyhow::{ensure, Result};
 use eframe::egui::{self, Color32, Margin, RichText, Stroke};
@@ -88,6 +89,7 @@ struct App {
     window_focused: bool,
     interface_draft: Option<model::InterfaceDraft>,
     color_draft: Option<palette_editor::Editor>,
+    solar_field: solar::Field,
 }
 
 impl App {
@@ -105,6 +107,7 @@ impl App {
             window_focused: true,
             interface_draft: None,
             color_draft: None,
+            solar_field: Default::default(),
         };
         app.refresh(&cc.egui_ctx);
         // A local recovery seed lets this process recreate missing AppData
@@ -198,25 +201,33 @@ impl App {
 
     fn sidebar(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("navigation")
-            .exact_width(204.0)
+            .exact_width(218.0)
             .resizable(false)
             .frame(
                 egui::Frame::new()
                     .fill(skin::SIDEBAR)
-                    .inner_margin(Margin::symmetric(18, 24)),
+                    .stroke(Stroke::new(1.0, skin::LINE))
+                    .inner_margin(Margin::symmetric(16, 24)),
             )
             .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(34.0, 36.0), egui::Sense::hover());
+                    skin::sun(ui.painter(), rect.center(), 9.0);
+                    ui.label(
+                        RichText::new("SOLstrap")
+                            .font(skin::display_font(23.0))
+                            .color(skin::CREAM),
+                    );
+                });
                 ui.label(
-                    RichText::new("SOLstrap")
-                        .font(skin::display_font(26.0))
-                        .color(skin::CREAM),
-                );
-                ui.label(
-                    RichText::new("Ferns companion")
-                        .size(12.0)
+                    RichText::new("SOL / CLIENT CONTROL")
+                        .size(10.0)
                         .color(skin::MUTED),
                 );
-                ui.add_space(30.0);
+                ui.add_space(22.0);
+                ui.label(RichText::new("[ MODULES ]").size(10.0).color(skin::MUTED));
+                ui.add_space(8.0);
                 for (index, page) in Page::ALL.into_iter().enumerate() {
                     if index == 5 {
                         ui.add_space(14.0);
@@ -231,7 +242,7 @@ impl App {
                 }
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                     ui.label(
-                        RichText::new("Version 0.1.0 · Alpha")
+                        RichText::new("SOLSTRAP / 0.1.0 ALPHA")
                             .color(skin::MUTED)
                             .size(11.0),
                     );
@@ -1149,11 +1160,12 @@ impl App {
                 let mut settings = snapshot.settings.clone();
                 let previous = settings.clone();
                 ui.horizontal(|ui| {
-                    ui.selectable_value(&mut settings.appearance, Appearance::Dark, "Ember");
-                    ui.selectable_value(&mut settings.appearance, Appearance::Light, "Daylight");
+                    ui.selectable_value(&mut settings.appearance, Appearance::Dark, "Solar dark");
+                    ui.selectable_value(&mut settings.appearance, Appearance::Light, "Solar light");
                     ui.selectable_value(&mut settings.appearance, Appearance::System, "System");
                 });
                 ui.checkbox(&mut settings.reduced_motion, "Reduce interface motion");
+                skin::hint(ui,"Pauses the liquid cursor wake and palette previews. The dotted grid remains visible; your in-game animation choices are separate.");
                 if previous != settings {
                     self.save(ctx, settings);
                 }
@@ -1203,7 +1215,7 @@ impl App {
             skin::field_row(ui, "Application", "Rust with egui/eframe");
             skin::field_row(ui, "Web runtime", "None");
             skin::field_row(ui, "Launcher", "Separate native Rust executable");
-            skin::hint(ui, "The settings app repaints on interaction. Website joins do not open this window. Close it when you finish configuring SOLstrap.");
+            skin::hint(ui, "The cursor wake settles after movement and pauses when unfocused. Reduce interface motion disables it and animated previews. Website joins do not open this window.");
         });
     }
 
@@ -1233,6 +1245,12 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let focused = ctx.input(|input| input.viewport().focused.unwrap_or(false));
+        self.solar_field.update(
+            ctx,
+            self.snapshot
+                .as_ref()
+                .is_some_and(|s| s.settings.reduced_motion),
+        );
         if focused && !self.window_focused {
             self.refresh(ctx);
         }
@@ -1259,6 +1277,38 @@ impl eframe::App for App {
         if self.page == Page::Interface && previous_page != self.page {
             self.refresh(ctx);
         }
+        egui::TopBottomPanel::bottom("solar-status")
+            .frame(
+                egui::Frame::new()
+                    .fill(skin::SIDEBAR)
+                    .inner_margin(Margin::symmetric(20, 8)),
+            )
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    let detected = self
+                        .snapshot
+                        .as_ref()
+                        .is_some_and(|s| s.installation.detected);
+                    ui.label(
+                        RichText::new(if detected {
+                            "● FERNS DETECTED"
+                        } else {
+                            "○ NO CLIENT"
+                        })
+                        .size(10.0)
+                        .color(skin::ORANGE),
+                    );
+                    ui.separator();
+                    ui.label(RichText::new("LOCAL SESSION").size(10.0).color(skin::MUTED));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            RichText::new("SOL // NATIVE RUST")
+                                .size(10.0)
+                                .color(skin::MUTED),
+                        );
+                    });
+                });
+            });
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
@@ -1267,23 +1317,32 @@ impl eframe::App for App {
             )
             .show(ctx, |ui| {
                 egui::Frame::new()
-                    .fill(skin::HEADER)
-                    .corner_radius(egui::CornerRadius {
-                        nw: 18,
-                        ne: 18,
-                        sw: 4,
-                        se: 18,
-                    })
-                    .inner_margin(Margin::symmetric(20, 16))
+                    .fill(ui.visuals().panel_fill)
+                    .stroke(Stroke::new(
+                        1.0,
+                        ui.visuals().widgets.noninteractive.bg_stroke.color,
+                    ))
+                    .corner_radius(3)
+                    .inner_margin(Margin::symmetric(20, 18))
                     .show(ui, |ui| {
                         ui.label(
-                            RichText::new(self.page.title())
-                                .font(skin::display_font(27.0))
-                                .color(skin::FIELD),
+                            RichText::new(format!("SOL / {}", self.page.nav().to_uppercase()))
+                                .size(10.0)
+                                .color(if ui.visuals().dark_mode {
+                                    skin::ORANGE
+                                } else {
+                                    skin::HEADER
+                                }),
                         );
+                        ui.add_space(4.0);
+                        ui.label(RichText::new(self.page.title()).font(skin::display_font(25.0)));
                         ui.label(
                             RichText::new(self.page.description())
-                                .color(skin::FIELD)
+                                .color(if ui.visuals().dark_mode {
+                                    skin::MUTED
+                                } else {
+                                    skin::PANEL
+                                })
                                 .size(13.0),
                         );
                         ui.add_space(6.0);
@@ -1291,21 +1350,13 @@ impl eframe::App for App {
                             let response = ui.add_sized(
                                 [(ui.available_width() - 105.0).max(180.0), 28.0],
                                 egui::TextEdit::singleline(&mut self.search)
-                                    .hint_text("Search features…")
-                                    .frame(true)
-                                    .text_color(skin::CREAM),
+                                    .hint_text("> search features")
+                                    .frame(true),
                             );
                             if response.changed() {
                                 self.page = Page::Compatibility;
                             }
-                            if ui
-                                .add(
-                                    egui::Button::new(RichText::new("Refresh").color(skin::FIELD))
-                                        .fill(Color32::TRANSPARENT)
-                                        .stroke(Stroke::NONE),
-                                )
-                                .clicked()
-                            {
+                            if ui.add(egui::Button::new("Refresh")).clicked() {
                                 self.error = None;
                                 self.refresh(ctx);
                             }
@@ -1350,6 +1401,8 @@ impl eframe::App for App {
                         ui.add_space(10.0);
                     });
             });
+        self.solar_field.grid(ctx);
+        self.solar_field.trail(ctx);
     }
 }
 
@@ -1358,8 +1411,8 @@ fn main() -> eframe::Result {
         .unwrap_or_default();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1040.0, 760.0])
-            .with_min_inner_size([880.0, 640.0])
+            .with_inner_size([1120.0, 820.0])
+            .with_min_inner_size([960.0, 680.0])
             .with_app_id("dev.solstrap.native")
             .with_icon(icon),
         renderer: eframe::Renderer::Glow,
