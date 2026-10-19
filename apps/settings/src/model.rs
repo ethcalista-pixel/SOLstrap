@@ -317,6 +317,12 @@ pub fn restore_interface_preferences() -> Result<()> {
     interface_preferences::restore(&data_dir()?, &interface_preferences::profile_path()?)
 }
 
+pub fn recover_warm_palette(original: &std::path::Path) -> Result<()> {
+    let dir = data_dir()?;
+    let installation = discovery::inspect(&Settings::load(&dir)?)?;
+    interface_colors::recover_warm(&dir, &installation.root, original)
+}
+
 pub fn set_integration(enabled: bool) -> Result<()> {
     let dir = data_dir()?;
     if enabled {

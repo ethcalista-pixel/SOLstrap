@@ -17,6 +17,7 @@ const ORIGINAL: &str = "63a233028114abdd3e554c12283b0d94c28d7528fe91f77870ac9fdc
 const EXE: &str = "ac4f4613a30012cc209b3358b815fcac9a3f47dea9860ebb5f74519ed0fe2958";
 const RECORD: &str = "interface-colors.json";
 const BACKUP: &str = "interface-colors-original.pack";
+pub const VERIFIED_WARM: &str = "41f39f4f721e54fbc48334c2b9ac458a71f5bc1b4c9ef0b1b6b779179c458d09";
 const LIMIT: u64 = 32 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,6 +178,7 @@ impl Palette {
 }
 #[derive(Debug, Serialize)]
 pub struct Status {
+    pub current_hash: String,
     pub supported: bool,
     pub installed: bool,
     pub recovery_available: bool,
@@ -233,6 +235,7 @@ pub fn status(dir: &Path, root: &Path) -> Result<Status> {
     let r = recovery(dir, root)?;
     let supported = current == ORIGINAL || r.as_ref().is_some_and(|r| managed(r, &current));
     Ok(Status {
+        current_hash: current.clone(),
         supported,
         installed: supported && current != ORIGINAL,
         recovery_available: r.is_some(),
@@ -275,6 +278,69 @@ fn lock(dir: &Path) -> Result<fs::File> {
     f.try_lock_exclusive()
         .context("Another palette operation is running")?;
     Ok(f)
+}
+/// Recover metadata for the exact, previously verified warm pack. Both the
+/// supplied original and a full rebuild must match; no client file is written.
+pub fn recover_warm(dir: &Path, root: &Path, original_path: &Path) -> Result<()> {
+    let _lock = lock(dir)?;
+    if recovery(dir, root)?.is_some() {
+        ensure!(
+            status(dir, root)?.supported,
+            "Existing recovery does not own the installed pack"
+        );
+        return Ok(());
+    }
+    let current = read(&target(root))?;
+    ensure!(
+        hash(&current) == VERIFIED_WARM,
+        "Only the verified SOLstrap warm palette can be recovered automatically"
+    );
+    let original = read(original_path)?;
+    ensure!(
+        hash(&original) == ORIGINAL,
+        "The supplied original shader backup failed verification"
+    );
+    ensure!(
+        build(&original, Palette::default())? == current,
+        "The installed pack does not match a rebuild from this backup"
+    );
+    let backup = dir.join(BACKUP);
+    if backup.try_exists()? {
+        ensure!(
+            read(&backup)? == original,
+            "Existing backup differs; preserving it"
+        );
+    } else {
+        let mut temp = tempfile::NamedTempFile::new_in(dir)?;
+        temp.write_all(&original)?;
+        temp.as_file().sync_all()?;
+        temp.persist_noclobber(&backup)
+            .map_err(|e| e.error)
+            .context("Cannot publish recovered original backup")?;
+    }
+    ensure!(
+        read(&target(root))? == current,
+        "Shader pack changed during recovery; no record written"
+    );
+    let record = Recovery {
+        version: 1,
+        path: target(root),
+        applied: VERIFIED_WARM.into(),
+        pending: None,
+        palette: Palette::default(),
+    };
+    let mut temp = tempfile::NamedTempFile::new_in(dir)?;
+    serde_json::to_writer_pretty(&mut temp, &record)?;
+    temp.as_file().sync_all()?;
+    temp.persist_noclobber(dir.join(RECORD))
+        .map_err(|e| e.error)
+        .context("Cannot publish recovered palette record")?;
+    let result = status(dir, root)?;
+    ensure!(
+        result.supported && result.installed && result.recovery_available,
+        "Recovered palette did not pass verification"
+    );
+    Ok(())
 }
 pub fn apply(dir: &Path, root: &Path, palette: Palette) -> Result<()> {
     palette.validate()?;
@@ -531,6 +597,39 @@ mod tests {
                 }
             }
         }
+    }
+    #[test]
+    #[ignore = "uses an explicitly supplied private original pack and isolated temporary files"]
+    fn orphaned_warm_pack_recovery_is_verified_and_preserves_client() {
+        let source = PathBuf::from(
+            std::env::var_os("SOLSTRAP_TEST_SHADER_BACKUP").expect("explicit original backup"),
+        );
+        let original = fs::read(&source).unwrap();
+        let warm = build(&original, Palette::default()).unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("client");
+        let dir = temp.path().join("state");
+        fs::create_dir_all(root.join("Player/shaders")).unwrap();
+        fs::write(target(&root), &warm).unwrap();
+        assert!(!status(&dir, &root).unwrap().supported);
+        let wrong = temp.path().join("wrong.pack");
+        fs::write(&wrong, b"invalid").unwrap();
+        assert!(recover_warm(&dir, &root, &wrong).is_err());
+        assert!(!dir.join(RECORD).exists());
+        assert!(!dir.join(BACKUP).exists());
+        recover_warm(&dir, &root, &source).unwrap();
+        let restored = status(&dir, &root).unwrap();
+        assert!(restored.supported && restored.installed && restored.recovery_available);
+        assert_eq!(fs::read(target(&root)).unwrap(), warm);
+        assert_eq!(fs::read(dir.join(BACKUP)).unwrap(), original);
+        recover_warm(&dir, &root, &source).unwrap();
+        fs::remove_file(dir.join(RECORD)).unwrap();
+        fs::write(dir.join(BACKUP), b"keep corrupt backup").unwrap();
+        assert!(recover_warm(&dir, &root, &source).is_err());
+        assert_eq!(fs::read(dir.join(BACKUP)).unwrap(), b"keep corrupt backup");
+        fs::write(target(&root), &original).unwrap();
+        assert!(recover_warm(&dir, &root, &source).is_err());
+        assert_eq!(fs::read(target(&root)).unwrap(), original);
     }
     // Private installed bytes are supplied explicitly and never bundled in Git.
     #[test]

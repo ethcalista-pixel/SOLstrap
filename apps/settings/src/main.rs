@@ -107,6 +107,33 @@ impl App {
             color_draft: None,
         };
         app.refresh(&cc.egui_ctx);
+        // A local recovery seed lets this process recreate missing AppData
+        // metadata itself, after verifying the exact generated pack bytewise.
+        if app
+            .snapshot
+            .as_ref()
+            .and_then(|s| s.interface_colors.as_ref())
+            .is_some_and(|s| {
+                !s.supported
+                    && !s.recovery_available
+                    && s.current_hash == solstrap_core::interface_colors::VERIFIED_WARM
+            })
+        {
+            if let Ok(exe) = std::env::current_exe() {
+                let seed = exe.with_file_name("palette-recovery-original.pack");
+                if seed.is_file() {
+                    app.operation(&cc.egui_ctx,||model::recover_warm_palette(&seed),"Verified palette recovery rebuilt. Your installed game files were unchanged.");
+                    if let Some(palette) = app
+                        .snapshot
+                        .as_ref()
+                        .and_then(|s| s.interface_colors.as_ref())
+                        .map(|s| s.palette)
+                    {
+                        app.color_draft = Some(palette_editor::Editor::new(palette));
+                    }
+                }
+            }
+        }
         app
     }
 
@@ -370,6 +397,8 @@ impl App {
     fn interface(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let mut apply_colors = None;
         let mut restore_colors = false;
+        let mut recheck_colors = false;
+        let mut recover_colors = false;
         skin::panel(ui, "GUI palette · Experimental", |ui| {
             skin::hint(ui, "Recolors dark neutral GUI surfaces and blue accents on the tested Ferns D3D11 build. Matching game UI and image colors may also change. This does not change layout or individual CoreGui properties. Fully close the player before applying; join again to load the palette.");
             if let Some(snapshot) = &self.snapshot {
@@ -401,6 +430,14 @@ impl App {
                         if let Some(reason) = blocked {
                             ui.colored_label(skin::ORANGE, reason);
                         }
+                        if !status.supported
+                            && !status.recovery_available
+                            && status.current_hash == solstrap_core::interface_colors::VERIFIED_WARM
+                        {
+                            recover_colors = ui
+                                .button("Recover existing SOLstrap palette from original backup…")
+                                .clicked();
+                        }
                         ui.horizontal_wrapped(|ui| {
                             if ui
                                 .add_enabled(
@@ -428,19 +465,57 @@ impl App {
                             if ui.button("Discard palette edits").clicked() {
                                 *editor = palette_editor::Editor::new(status.palette);
                             }
+                            recheck_colors = ui.button("Recheck palette files").clicked();
                         });
                     }
                     skin::hint(
                         ui,
-                        if status.installed {
+                        if !status.supported {
+                            "Unrecognized shader pack. No shader files have been changed."
+                        } else if status.installed {
                             "Palette installed. Restart Ferns after changing colors."
                         } else {
                             "Original shader colors. Applying saves a verified recovery copy first."
                         },
                     );
+                    ui.collapsing("Palette file details", |ui| {
+                        ui.label(format!(
+                            "Recovery folder: {}",
+                            snapshot.data_directory.display()
+                        ));
+                        ui.label(format!(
+                            "Shader pack: {}",
+                            snapshot
+                                .installation
+                                .root
+                                .join("Player/shaders/shaders_d3d11.pack")
+                                .display()
+                        ));
+                        ui.label(format!(
+                            "Supported: {} · Installed: {} · Verified recovery: {}",
+                            status.supported, status.installed, status.recovery_available
+                        ));
+                        ui.label(format!("Current SHA-256: {}", status.current_hash));
+                    });
                 }
             }
         });
+        if recheck_colors {
+            self.refresh(ctx);
+        }
+        if recover_colors {
+            if let Some(source) = rfd::FileDialog::new()
+                .set_title("Select the original Ferns shader pack backup")
+                .add_filter("Shader pack", &["pack"])
+                .pick_file()
+            {
+                self.operation(
+                    ctx,
+                    || model::recover_warm_palette(&source),
+                    "Verified palette recovery rebuilt. Your installed game files were unchanged.",
+                );
+            }
+        }
         if let Some(palette) = apply_colors {
             self.operation(
                 ctx,
@@ -1179,7 +1254,11 @@ impl eframe::App for App {
                 Err(mpsc::TryRecvError::Empty) => {}
             }
         }
+        let previous_page = self.page;
         self.sidebar(ctx);
+        if self.page == Page::Interface && previous_page != self.page {
+            self.refresh(ctx);
+        }
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()

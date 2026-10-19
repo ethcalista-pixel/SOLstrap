@@ -22,6 +22,7 @@ fn run() -> Result<()> {
                     "probe": coregui_probe::status(&dir, &installation.root)?,
                     "loader_trial": coregui_loader_trial::status(&dir, &installation.root)?,
                     "interface_font": interface_font::status(&dir, &installation.root)?,
+                    "interface_colors": interface_colors::status(&dir, &installation.root)?,
                     "installation": installation,
                     "integration": integration::status(&dir, &NativeRegistry)?,
                     "data_dir": dir,
