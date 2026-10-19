@@ -101,6 +101,14 @@ These checks remain pending until explicitly recorded. CoreGui and experimental 
 
 ## 2026-10-19 GUI palette and editor validation
 
+### Gradient and animation preview build
+
+The native palette editor now includes picker/hex input, two-color linear and radial fills, angle/spread controls, color fade, gradient flow, rainbow, cycle duration, and a pausable preview. These effects span the viewport; they do not know individual CoreGui element bounds. Preview motion honors the app's reduced-motion setting. Older palette records deserialize as solid colors. Palette drafts and incomplete hex edits remain in memory across refresh/focus changes until applied or explicitly discarded.
+
+Offline checks pass: 52 workspace tests, strict clippy, formatting, and optimized builds. An additional opt-in read-only test builds all valid gradient/animation combinations for each palette role independently and all roles together against the private original pack. Every affected variant passes DXBC checksum, Direct3D reflection/global-buffer extent checks, and D3D11 WARP shader creation. The all-effects-off warm pack retains the exact hash of the previously verified live build. No installed Ferns assets were changed for these checks.
+
+Pending user tests: static gradient direction/spread and radial placement, each animation over multiple cycles, restart persistence, and restore. Animation reads the existing global force-field time field; its live advancement during this client's UI draws remains unverified. Offline shader acceptance is not evidence of live gradient or animation behavior.
+
 Native Rust GUI palette controls now generate and validate changes to eight GUI pixel-shader variants in the pinned Ferns D3D11 pack. Fresh website joins visually confirmed warm People-menu rows and Resume changing from orange to a picker-selected teal. This is shared GUI rendering: matching game UI and image pixels can also change. Per-component CoreGui properties and layout remain unresolved. The original signed InExperience bundle was reverified unchanged.
 
 The native recovery command restored the exact original shader-pack hash. An isolated test using copies of the installed files passed palette install, palette update, exact restore, interrupted-write restore, outside-change rejection, and corrupt-backup rejection. Recovery backups and player bytes are private local files, excluded from Git. This opt-in installed-file test passed again after atomic backup publication was added.

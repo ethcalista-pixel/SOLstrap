@@ -2,6 +2,8 @@
 //! and output-signature instructions are preserved; RGB mapping is appended.
 use super::Palette;
 use anyhow::{ensure, Context, Result};
+mod effects;
+mod reflection;
 
 fn word(b: &[u8], p: usize) -> Result<u32> {
     Ok(u32::from_le_bytes(
@@ -161,7 +163,7 @@ fn instructions(words: &[u32]) -> Result<Vec<Vec<u32>>> {
     }
     Ok(result)
 }
-fn remap_operand(words: &mut [u32], p: usize, base: u32) -> Result<usize> {
+fn remap_operand(words: &mut [u32], p: usize, base: u32, position: Option<u32>) -> Result<usize> {
     let token = *words.get(p).context("Missing mapper operand")?;
     let mut index_pos = p + 1;
     let mut extended = token;
@@ -172,6 +174,21 @@ fn remap_operand(words: &mut [u32], p: usize, base: u32) -> Result<usize> {
         index_pos += 1;
     }
     let kind = (token >> 12) & 255;
+    if kind == 13 {
+        ensure!((token >> 20) & 3 == 0, "Unexpected null operand index");
+        return Ok(index_pos);
+    }
+    if kind == 8 {
+        ensure!(
+            (token >> 20) & 3 == 2 && (token >> 22) & 63 == 0,
+            "Unexpected constant indexing"
+        );
+        ensure!(
+            words.get(index_pos) == Some(&0) && words.get(index_pos + 1).is_some_and(|v| *v < 51),
+            "Unexpected palette constant buffer"
+        );
+        return Ok(index_pos + 2);
+    }
     if kind == 4 {
         let count = match token & 3 {
             1 => 1,
@@ -190,13 +207,17 @@ fn remap_operand(words: &mut [u32], p: usize, base: u32) -> Result<usize> {
         .context("Missing mapper register index")?;
     match kind {
         0 => {
-            ensure!(index < 16, "Mapper temporary out of range");
+            ensure!(index < 64, "Mapper temporary out of range");
             words[index_pos] = index + base + 1;
         }
         1 => {
-            ensure!(index == 0, "Unexpected mapper input");
-            words[p] &= !(255 << 12);
-            words[index_pos] = base;
+            if index == 0 {
+                words[p] &= !(255 << 12);
+                words[index_pos] = base;
+            } else {
+                ensure!(index == 1, "Unexpected mapper input");
+                words[index_pos] = position.context("Missing pixel position")?;
+            }
         }
         2 => ensure!(index == 0, "Unexpected mapper output"),
         _ => anyhow::bail!("Unexpected mapper register kind"),
@@ -207,8 +228,10 @@ pub(super) fn patch(original: &[u8], mapper: &[u8]) -> Result<Vec<u8>> {
     let mut cc = chunks(original)?;
     let (index, words) = program(&cc)?;
     let mut ins = instructions(&words)?;
-    let (_, mapper_words) = program(&chunks(mapper)?)?;
+    let mapper_chunks = chunks(mapper)?;
+    let (_, mapper_words) = program(&mapper_chunks)?;
     let mapper_ins = instructions(&mapper_words)?;
+    let position = reflection::merge(&mut cc, &mapper_chunks, &mut ins, &mapper_ins)?;
     let counts: Vec<_> = ins
         .iter()
         .filter(|x| x[0] & 2047 == 104)
@@ -225,7 +248,7 @@ pub(super) fn patch(original: &[u8], mapper: &[u8]) -> Result<Vec<u8>> {
     );
     let base = counts[0].context("Missing temporary count")?;
     let extra = mapper_counts[0].context("Missing mapper temporary count")?;
-    ensure!(base < 128 && extra < 16, "Too many shader temporaries");
+    ensure!(base < 128 && extra < 64, "Too many shader temporaries");
     for instruction in &mut ins {
         if instruction[0] & 2047 == 104 {
             instruction[1] = base + 1 + extra;
@@ -262,7 +285,7 @@ pub(super) fn patch(original: &[u8], mapper: &[u8]) -> Result<Vec<u8>> {
     );
     ins.pop();
     for mut instruction in mapper_ins {
-        if [98, 101, 104, 106].contains(&(instruction[0] & 2047)) {
+        if [89, 98, 100, 101, 104, 106].contains(&(instruction[0] & 2047)) {
             continue;
         }
         ensure!(
@@ -271,7 +294,7 @@ pub(super) fn patch(original: &[u8], mapper: &[u8]) -> Result<Vec<u8>> {
         );
         let mut p = 1;
         while p < instruction.len() {
-            p = remap_operand(&mut instruction, p, base)?;
+            p = remap_operand(&mut instruction, p, base, position)?;
         }
         ensure!(p == instruction.len(), "Invalid mapper instruction");
         ins.push(instruction);
@@ -285,6 +308,17 @@ pub(super) fn patch(original: &[u8], mapper: &[u8]) -> Result<Vec<u8>> {
     Ok(result)
 }
 pub(super) fn compile(palette: Palette) -> Result<Vec<u8>> {
+    palette.validate()?;
+    if [
+        palette.background_effect,
+        palette.surface_effect,
+        palette.accent_effect,
+    ]
+    .iter()
+    .any(|e| e.active())
+    {
+        return native::compile(&effects::source(palette));
+    }
     let rgb = |a: [u8; 3]| {
         format!(
             "float3({:.9},{:.9},{:.9})",
@@ -332,6 +366,12 @@ mod native {
     type Ptr = *mut c_void;
     #[link(name = "d3dcompiler")]
     extern "system" {
+        fn D3DReflect(
+            data: *const c_void,
+            size: usize,
+            iid: *const u8,
+            reflection: *mut Ptr,
+        ) -> i32;
         fn D3DCompile(
             data: *const c_void,
             size: usize,
@@ -417,6 +457,58 @@ mod native {
         Ok(data)
     }
     pub fn validate(data: &[u8]) -> Result<()> {
+        // Reflection exercises relocated RDEF names/types and the new CB0 binding,
+        // in addition to the independent D3D11 bytecode validator below.
+        let iid = [
+            0xa1, 0x6c, 0x53, 0x8d, 0xca, 0x0c, 0x56, 0x49, 0xa8, 0x37, 0x78, 0x69, 0x63, 0x75,
+            0x55, 0x84,
+        ];
+        let mut reflection = Com(std::ptr::null_mut());
+        let hr = unsafe {
+            D3DReflect(
+                data.as_ptr().cast(),
+                data.len(),
+                iid.as_ptr(),
+                &mut reflection.0,
+            )
+        };
+        ensure!(
+            hr >= 0 && !reflection.0.is_null(),
+            "Direct3D reflection rejected GUI palette: {hr:#x}"
+        );
+        let cc = chunks(data)?;
+        let (_, words) = program(&cc)?;
+        if let Some(decl) = instructions(&words)?
+            .iter()
+            .find(|x| x[0] & 2047 == 89 && x.get(2) == Some(&0))
+        {
+            #[repr(C)]
+            struct BufferDesc {
+                name: *const c_char,
+                kind: u32,
+                variables: u32,
+                size: u32,
+                flags: u32,
+            }
+            let get: unsafe extern "system" fn(Ptr, *const c_char) -> Ptr =
+                unsafe { std::mem::transmute(reflection.method(5)) };
+            let cb = unsafe { get(reflection.0, c"CB0".as_ptr()) };
+            ensure!(!cb.is_null(), "Missing reflected global buffer");
+            let get_desc: unsafe extern "system" fn(Ptr, *mut BufferDesc) -> i32 =
+                unsafe { std::mem::transmute(*(*(cb as *const *const Ptr))) };
+            let mut desc = BufferDesc {
+                name: std::ptr::null(),
+                kind: 0,
+                variables: 0,
+                size: 0,
+                flags: 0,
+            };
+            let hr = unsafe { get_desc(cb, &mut desc) };
+            ensure!(
+                hr >= 0 && desc.size >= decl[3] * 16,
+                "Reflected global buffer does not cover shader inputs"
+            );
+        }
         let mut device = Com(std::ptr::null_mut());
         let mut context = Com(std::ptr::null_mut());
         let mut level = 0;

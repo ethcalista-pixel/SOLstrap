@@ -1,6 +1,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod model;
+mod palette_editor;
 mod skin;
 
 use anyhow::{ensure, Result};
@@ -86,7 +87,7 @@ struct App {
     hash_job: Option<Receiver<Result<String>>>,
     window_focused: bool,
     interface_draft: Option<model::InterfaceDraft>,
-    color_draft: Option<solstrap_core::interface_colors::Palette>,
+    color_draft: Option<palette_editor::Editor>,
 }
 
 impl App {
@@ -113,7 +114,10 @@ impl App {
         match model::snapshot() {
             Ok(snapshot) => {
                 if self.color_draft.is_none() {
-                    self.color_draft = snapshot.interface_colors.as_ref().map(|s| s.palette);
+                    self.color_draft = snapshot
+                        .interface_colors
+                        .as_ref()
+                        .map(|s| palette_editor::Editor::new(s.palette));
                 }
                 if let Some(status) = &snapshot.interface_preferences {
                     match &mut self.interface_draft {
@@ -379,30 +383,24 @@ impl App {
                     if status.conflict {
                         ui.colored_label(skin::ORANGE,"Shader files changed outside SOLstrap. The current file and recovery backup are preserved.");
                     }
-                    if let Some(palette) = &mut self.color_draft {
-                        ui.horizontal(|ui| {
-                            ui.color_edit_button_srgb(&mut palette.background);
-                            ui.label("Dark background");
-                        });
-                        ui.horizontal(|ui| {
-                            ui.color_edit_button_srgb(&mut palette.surface);
-                            ui.label("Lighter surface");
-                        });
-                        ui.horizontal(|ui| {
-                            ui.color_edit_button_srgb(&mut palette.accent);
-                            ui.label("Blue-accent replacement");
-                        });
+                    if let Some(editor) = &mut self.color_draft {
+                        let valid = editor.show(
+                            ui,
+                            ctx.input(|i| i.time) as f32,
+                            !snapshot.settings.reduced_motion,
+                        );
                         ui.horizontal_wrapped(|ui| {
                             if ui
                                 .add_enabled(
-                                    status.supported
+                                    valid
+                                        && status.supported
                                         && !status.conflict
-                                        && (!status.installed || *palette != status.palette),
+                                        && (!status.installed || editor.palette != status.palette),
                                     egui::Button::new("Apply GUI palette"),
                                 )
                                 .clicked()
                             {
-                                apply_colors = Some(*palette);
+                                apply_colors = Some(editor.palette);
                             }
                             if ui
                                 .add_enabled(
@@ -416,7 +414,10 @@ impl App {
                                 restore_colors = true;
                             }
                             if ui.button("Warm orange preset").clicked() {
-                                *palette = Default::default();
+                                *editor = palette_editor::Editor::new(Default::default());
+                            }
+                            if ui.button("Discard palette edits").clicked() {
+                                *editor = palette_editor::Editor::new(status.palette);
                             }
                         });
                     }

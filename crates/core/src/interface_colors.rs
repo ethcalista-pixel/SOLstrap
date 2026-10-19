@@ -20,10 +20,121 @@ const BACKUP: &str = "interface-colors-original.pack";
 const LIMIT: u64 = 32 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Gradient {
+    Solid,
+    Linear,
+    Radial,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Animation {
+    None,
+    ColorFade,
+    Flow,
+    Rainbow,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Effect {
+    pub gradient: Gradient,
+    pub secondary: [u8; 3],
+    pub angle_degrees: u16,
+    pub spread_percent: u16,
+    pub animation: Animation,
+    pub period_ms: u32,
+}
+impl Default for Effect {
+    fn default() -> Self {
+        Self {
+            gradient: Gradient::Solid,
+            secondary: [255, 190, 90],
+            angle_degrees: 0,
+            spread_percent: 100,
+            animation: Animation::None,
+            period_ms: 6000,
+        }
+    }
+}
+impl Effect {
+    pub fn active(self) -> bool {
+        self.gradient != Gradient::Solid || self.animation != Animation::None
+    }
+    pub fn animated(self) -> bool {
+        self.animation != Animation::None
+    }
+    pub fn validate(self) -> Result<()> {
+        ensure!(
+            self.angle_degrees < 360,
+            "Gradient angle must be between 0 and 359 degrees"
+        );
+        ensure!(
+            (25..=400).contains(&self.spread_percent),
+            "Gradient spread must be between 25 and 400 percent"
+        );
+        ensure!(
+            (500..=60000).contains(&self.period_ms),
+            "Animation cycle must be between 0.5 and 60 seconds"
+        );
+        ensure!(
+            self.animation != Animation::Flow || self.gradient != Gradient::Solid,
+            "Choose a linear or radial gradient before enabling flow"
+        );
+        Ok(())
+    }
+    /// Native editor preview. Game rendering uses the generated shader equivalent.
+    pub fn sample(self, primary: [u8; 3], uv: [f32; 2], seconds: f32) -> [u8; 3] {
+        let angle = (self.angle_degrees as f32).to_radians();
+        let spread = 100.0 / self.spread_percent.max(1) as f32;
+        let coord = match self.gradient {
+            Gradient::Solid => 0.0,
+            Gradient::Linear => {
+                0.5 + ((uv[0] - 0.5) * angle.cos() + (uv[1] - 0.5) * angle.sin()) * spread
+            }
+            Gradient::Radial => {
+                ((uv[0] - 0.5).powi(2) + (uv[1] - 0.5).powi(2)).sqrt() * 2.0 * spread
+            }
+        };
+        let phase = seconds * 1000.0 / self.period_ms.max(1) as f32;
+        let cycle = 0.5 - 0.5 * (phase * std::f32::consts::TAU).cos();
+        let mut t = coord.clamp(0.0, 1.0);
+        match self.animation {
+            Animation::None | Animation::Rainbow => {}
+            Animation::ColorFade => {
+                t = if self.gradient == Gradient::Solid {
+                    cycle
+                } else {
+                    t + (1.0 - 2.0 * t) * cycle
+                }
+            }
+            Animation::Flow => {
+                t = 0.5 - 0.5 * ((coord * 0.5 - phase) * std::f32::consts::TAU).cos()
+            }
+        }
+        let color = std::array::from_fn::<_, 3, _>(|i| {
+            primary[i] as f32 * (1.0 - t) + self.secondary[i] as f32 * t
+        });
+        if self.animation == Animation::Rainbow {
+            let value = color.into_iter().fold(0.0_f32, f32::max);
+            return std::array::from_fn(|i| {
+                let offset = [0.0, 2.0 / 3.0, 1.0 / 3.0][i];
+                let hue = (phase + coord * 0.25 + offset).rem_euclid(1.0);
+                (((hue * 6.0 - 3.0).abs() - 1.0).clamp(0.0, 1.0) * value)
+                    .round()
+                    .clamp(0.0, 255.0) as u8
+            });
+        }
+        color.map(|v| v.round().clamp(0.0, 255.0) as u8)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Palette {
     pub background: [u8; 3],
     pub surface: [u8; 3],
     pub accent: [u8; 3],
+    pub background_effect: Effect,
+    pub surface_effect: Effect,
+    pub accent_effect: Effect,
 }
 impl Default for Palette {
     fn default() -> Self {
@@ -31,7 +142,37 @@ impl Default for Palette {
             background: [33, 17, 9],
             surface: [115, 63, 29],
             accent: [224, 92, 23],
+            background_effect: Effect {
+                secondary: [65, 30, 16],
+                ..Effect::default()
+            },
+            surface_effect: Effect {
+                secondary: [155, 76, 31],
+                ..Effect::default()
+            },
+            accent_effect: Effect::default(),
         }
+    }
+}
+impl Palette {
+    pub fn validate(self) -> Result<()> {
+        for effect in [
+            self.background_effect,
+            self.surface_effect,
+            self.accent_effect,
+        ] {
+            effect.validate()?;
+        }
+        Ok(())
+    }
+    pub fn animated(self) -> bool {
+        [
+            self.background_effect,
+            self.surface_effect,
+            self.accent_effect,
+        ]
+        .iter()
+        .any(|e| e.animated())
     }
 }
 #[derive(Debug, Serialize)]
@@ -136,6 +277,7 @@ fn lock(dir: &Path) -> Result<fs::File> {
     Ok(f)
 }
 pub fn apply(dir: &Path, root: &Path, palette: Palette) -> Result<()> {
+    palette.validate()?;
     let _lock = lock(dir)?;
     crate::interface_preferences::require_closed()?;
     ensure!(
@@ -298,6 +440,98 @@ fn build(original: &[u8], palette: Palette) -> Result<Vec<u8>> {
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
+    #[test]
+    fn old_palette_json_and_effect_bounds() {
+        let p: Palette =
+            serde_json::from_str(r#"{"background":[1,2,3],"surface":[4,5,6],"accent":[7,8,9]}"#)
+                .unwrap();
+        assert!(!p.animated());
+        assert!(!p.accent_effect.active());
+        assert_eq!(p.accent, [7, 8, 9]);
+        for e in [
+            Effect {
+                period_ms: 0,
+                ..Effect::default()
+            },
+            Effect {
+                angle_degrees: 360,
+                ..Effect::default()
+            },
+            Effect {
+                spread_percent: 401,
+                ..Effect::default()
+            },
+            Effect {
+                animation: Animation::Flow,
+                ..Effect::default()
+            },
+        ] {
+            assert!(e.validate().is_err());
+        }
+        let e = Effect {
+            gradient: Gradient::Linear,
+            secondary: [0, 0, 255],
+            ..Effect::default()
+        };
+        assert_eq!(e.sample([255, 0, 0], [0.0, 0.5], 0.0), [255, 0, 0]);
+        assert_eq!(e.sample([255, 0, 0], [1.0, 0.5], 0.0), [0, 0, 255]);
+        let e = Effect {
+            animation: Animation::ColorFade,
+            ..e
+        };
+        assert_eq!(e.sample([255, 0, 0], [0.0, 0.5], 3.0), [0, 0, 255]);
+        assert_eq!(e.sample([255, 0, 0], [0.0, 0.5], 6.0), [255, 0, 0]);
+    }
+    #[test]
+    #[ignore = "read-only validation using explicitly supplied original private shader pack"]
+    fn pinned_pack_effects_compile_read_only() {
+        let original = fs::read(
+            std::env::var_os("SOLSTRAP_TEST_SHADER_BACKUP").expect("explicit original pack path"),
+        )
+        .unwrap();
+        assert_eq!(
+            hash(&build(&original, Palette::default()).unwrap()),
+            "41f39f4f721e54fbc48334c2b9ac458a71f5bc1b4c9ef0b1b6b779179c458d09"
+        );
+        for gradient in [Gradient::Solid, Gradient::Linear, Gradient::Radial] {
+            for animation in [
+                Animation::None,
+                Animation::ColorFade,
+                Animation::Flow,
+                Animation::Rainbow,
+            ] {
+                if gradient == Gradient::Solid && animation == Animation::Flow {
+                    continue;
+                }
+                let e = Effect {
+                    gradient,
+                    animation,
+                    ..Effect::default()
+                };
+                let p = Palette {
+                    background_effect: e,
+                    surface_effect: e,
+                    accent_effect: e,
+                    ..Palette::default()
+                };
+                build(&original, p)
+                    .unwrap_or_else(|error| panic!("{gradient:?}/{animation:?}: {error:#}"));
+                // Independently enabled roles exercise compiler optimization:
+                // a solid animated role can remove position/viewport inputs.
+                for role in 0..3 {
+                    let mut p = Palette::default();
+                    match role {
+                        0 => p.background_effect = e,
+                        1 => p.surface_effect = e,
+                        _ => p.accent_effect = e,
+                    }
+                    build(&original, p).unwrap_or_else(|error| {
+                        panic!("role {role} {gradient:?}/{animation:?}: {error:#}")
+                    });
+                }
+            }
+        }
+    }
     // Private installed bytes are supplied explicitly and never bundled in Git.
     #[test]
     #[ignore = "requires the pinned local Ferns player, original pack, and closed players"]
