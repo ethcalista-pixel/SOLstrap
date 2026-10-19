@@ -98,3 +98,13 @@ The Client and Diagnostics screens were inspected in the native app. A dark-them
 - Test portable cleanup after restoration and paths containing spaces/non-ASCII characters.
 
 These checks remain pending until explicitly recorded. CoreGui and experimental features require separate real-client proofs of concept.
+
+## 2026-10-19 GUI palette and editor validation
+
+Native Rust GUI palette controls now generate and validate changes to eight GUI pixel-shader variants in the pinned Ferns D3D11 pack. Fresh website joins visually confirmed warm People-menu rows and Resume changing from orange to a picker-selected teal. This is shared GUI rendering: matching game UI and image pixels can also change. Per-component CoreGui properties and layout remain unresolved. The original signed InExperience bundle was reverified unchanged.
+
+The native recovery command restored the exact original shader-pack hash. An isolated test using copies of the installed files passed palette install, palette update, exact restore, interrupted-write restore, outside-change rejection, and corrupt-backup rejection. Recovery backups and player bytes are private local files, excluded from Git. This opt-in installed-file test passed again after atomic backup publication was added.
+
+The accessibility editor now retains dirty fields across Refresh, focus changes, and failed Apply attempts. Same-field outside changes require review or explicit Discard, and stale writes are rejected under the lock. A native visual check confirmed Refresh retaining an unsaved text-size choice; that temporary draft was discarded.
+
+Validation: 45 core tests and five settings-editor tests pass in the normal workspace suite; the additional local installed-file recovery test passes separately. Strict workspace Clippy, formatting, and release builds pass. No client-authentication or signature-enforcement settings were changed.

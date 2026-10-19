@@ -8,10 +8,164 @@ use solstrap_core::{
     discovery::{self, Installation},
     health::{self, HealthReport},
     integration::{self, IntegrationStatus, NativeRegistry},
-    interface_font, interface_preferences,
+    interface_colors, interface_font, interface_preferences,
     settings::Settings,
 };
 use std::path::PathBuf;
+
+/// An editor keeps its own baseline so refreshes never discard unsaved fields.
+pub struct InterfaceDraft {
+    pub values: interface_preferences::Values,
+    baseline: interface_preferences::Values,
+}
+
+impl InterfaceDraft {
+    pub fn new(current: interface_preferences::Values) -> Self {
+        Self {
+            values: current,
+            baseline: current,
+        }
+    }
+
+    pub fn refresh(&mut self, current: interface_preferences::Values) {
+        merge_field(
+            &mut self.values.text_size,
+            &mut self.baseline.text_size,
+            current.text_size,
+        );
+        merge_field(
+            &mut self.values.transparency,
+            &mut self.baseline.transparency,
+            current.transparency,
+        );
+        merge_field(
+            &mut self.values.reduced_motion,
+            &mut self.baseline.reduced_motion,
+            current.reduced_motion,
+        );
+    }
+
+    pub fn dirty(&self) -> bool {
+        self.values != self.baseline
+    }
+
+    pub fn conflict(&self, current: interface_preferences::Values) -> bool {
+        field_conflict(
+            self.values.text_size,
+            self.baseline.text_size,
+            current.text_size,
+        ) || field_conflict(
+            self.values.transparency,
+            self.baseline.transparency,
+            current.transparency,
+        ) || field_conflict(
+            self.values.reduced_motion,
+            self.baseline.reduced_motion,
+            current.reduced_motion,
+        )
+    }
+}
+
+fn merge_field<T: Copy + PartialEq>(draft: &mut T, baseline: &mut T, current: T) {
+    if *draft == *baseline || *draft == current {
+        *draft = current;
+        *baseline = current;
+    }
+}
+
+fn field_conflict<T: PartialEq>(draft: T, baseline: T, current: T) -> bool {
+    draft != baseline && current != baseline && current != draft
+}
+
+#[cfg(test)]
+mod draft_tests {
+    use super::*;
+
+    fn original() -> interface_preferences::Values {
+        interface_preferences::Values {
+            text_size: Some(1),
+            transparency: Some(0.5),
+            reduced_motion: None,
+        }
+    }
+
+    #[test]
+    fn focus_refresh_and_failed_apply_keep_unsaved_choices() {
+        let mut draft = InterfaceDraft::new(original());
+        draft.values.text_size = Some(4);
+        draft.values.transparency = Some(0.0);
+        let chosen = draft.values;
+        for _ in 0..3 {
+            draft.refresh(original());
+            assert_eq!(draft.values, chosen);
+            assert!(draft.dirty());
+            assert!(!draft.conflict(original()));
+        }
+    }
+
+    #[test]
+    fn unrelated_external_fields_update_without_losing_edits() {
+        let mut draft = InterfaceDraft::new(original());
+        draft.values.text_size = Some(4);
+        let current = interface_preferences::Values {
+            transparency: None,
+            reduced_motion: Some(true),
+            ..original()
+        };
+        draft.refresh(current);
+        assert_eq!(draft.values.text_size, Some(4));
+        assert_eq!(draft.values.transparency, None);
+        assert_eq!(draft.values.reduced_motion, Some(true));
+        assert!(draft.dirty());
+        assert!(!draft.conflict(current));
+    }
+
+    #[test]
+    fn same_field_external_change_stays_conflicted_until_discard() {
+        let mut draft = InterfaceDraft::new(original());
+        draft.values.text_size = Some(4);
+        let current = interface_preferences::Values {
+            text_size: Some(2),
+            ..original()
+        };
+        for _ in 0..3 {
+            draft.refresh(current);
+            assert_eq!(draft.values.text_size, Some(4));
+            assert!(draft.conflict(current));
+        }
+        draft = InterfaceDraft::new(current);
+        assert!(!draft.dirty());
+        assert!(!draft.conflict(current));
+    }
+
+    #[test]
+    fn successful_apply_marks_clean_and_later_external_values_load() {
+        let mut draft = InterfaceDraft::new(original());
+        draft.values.text_size = Some(4);
+        draft.values.transparency = None;
+        draft.refresh(draft.values);
+        assert!(!draft.dirty());
+        draft.refresh(original());
+        assert_eq!(draft.values, original());
+        assert!(!draft.dirty());
+    }
+
+    #[test]
+    fn reverting_a_conflicted_edit_loads_current_external_value() {
+        let mut draft = InterfaceDraft::new(original());
+        draft.values.transparency = None;
+        let current = interface_preferences::Values {
+            transparency: Some(0.9),
+            ..original()
+        };
+        draft.refresh(current);
+        assert!(draft.conflict(current));
+        draft.values.transparency = original().transparency;
+        draft.refresh(current);
+        assert_eq!(draft.values, current);
+        assert!(!draft.dirty());
+    }
+}
 
 #[derive(Serialize)]
 pub struct Snapshot {
@@ -29,6 +183,8 @@ pub struct Snapshot {
     pub font_test_error: Option<String>,
     pub interface_preferences: Option<interface_preferences::Status>,
     pub interface_preferences_error: Option<String>,
+    pub interface_colors: Option<interface_colors::Status>,
+    pub interface_colors_error: Option<String>,
     pub launcher_available: bool,
     pub version: &'static str,
     pub platform: &'static str,
@@ -63,6 +219,11 @@ pub fn snapshot() -> Result<Snapshot> {
         Ok(status) => (Some(status), None),
         Err(error) => (None, Some(format!("{error:#}"))),
     };
+    let (interface_colors, interface_colors_error) =
+        match interface_colors::status(&dir, &installation.root) {
+            Ok(status) => (Some(status), None),
+            Err(error) => (None, Some(format!("{error:#}"))),
+        };
     let (loader_trial, loader_trial_error) =
         match coregui_loader_trial::status(&dir, &installation.root) {
             Ok(status) => (Some(status), None),
@@ -88,6 +249,8 @@ pub fn snapshot() -> Result<Snapshot> {
         font_test_error,
         interface_preferences,
         interface_preferences_error,
+        interface_colors,
+        interface_colors_error,
         integration: integration::status(&dir, &NativeRegistry)?,
         launcher_available: launcher_path()?.is_file(),
         settings,
@@ -105,6 +268,13 @@ pub fn save(settings: &Settings) -> Result<()> {
             "Restore website integration before changing the client location"
         );
         let current = discovery::inspect(&previous)?;
+        if dir.join("interface-colors.json").try_exists()? {
+            let colors = interface_colors::status(&dir, &current.root)?;
+            ensure!(
+                !colors.installed && !colors.conflict,
+                "Restore GUI colors before changing the client location"
+            );
+        }
         ensure!(
             !coregui_probe::status(&dir, &current.root)?.recovery_available,
             "Restore the CoreGui test script before changing the client location"
@@ -120,11 +290,26 @@ pub fn save(settings: &Settings) -> Result<()> {
     settings.save(&dir)
 }
 
-pub fn apply_interface_preferences(values: interface_preferences::Values) -> Result<()> {
-    interface_preferences::apply(
+pub fn apply_interface_colors(palette: interface_colors::Palette) -> Result<()> {
+    let dir = data_dir()?;
+    let installation = discovery::inspect(&Settings::load(&dir)?)?;
+    interface_colors::apply(&dir, &installation.root, palette)
+}
+pub fn restore_interface_colors() -> Result<()> {
+    let dir = data_dir()?;
+    let installation = discovery::inspect(&Settings::load(&dir)?)?;
+    interface_colors::restore(&dir, &installation.root)
+}
+
+pub fn apply_interface_preferences(
+    values: interface_preferences::Values,
+    expected: interface_preferences::Values,
+) -> Result<()> {
+    interface_preferences::apply_if_current(
         &data_dir()?,
         &interface_preferences::profile_path()?,
         values,
+        expected,
     )
 }
 
@@ -178,11 +363,12 @@ pub const FEATURES: &[Feature] = &[
     Feature { name: "CoreGui compatibility test", category: "Interface", status: "No result on tested build", description: "The loose-script test produced no label or execution marker on Ferns 0.724. The active interface uses the compiled InExperience bundle. Restore controls remain available." },
     Feature { name: "Interface font experiment", category: "Interface", status: "Confirmed on tested build", description: "The user confirmed monospaced interface text on Ferns 0.724. Reversibly maps Builder Sans to bundled Builder Mono; game text using the same font may also change." },
     Feature { name: "Player accessibility preferences", category: "Interface", status: "Text size and transparency confirmed", description: "The user confirmed Largest text and an opaque Escape-menu panel on the tested build. Reduced motion remains unverified. Changes have recovery and conflict checks and are shared with other Windows Roblox players; close the player before applying." },
+    Feature { name: "GUI palette", category: "Interface", status: "Experimental · tested D3D11 build", description: "Native color pickers recolor dark GUI surfaces and blue accents using locally generated rendering assets. Warm People-menu rows and an orange Resume button were visually verified. Matching game UI and image colors can also change. Requires a closed player, restart, and the pinned Ferns build; exact original-file recovery is available." },
     Feature { name: "Player-log evidence", category: "Diagnostics", status: "Available", description: "Bounded scanning of recent Ferns player logs with structured script, test, and exception markers. Raw log text is not exported." },
     Feature { name: "Website launch integration", category: "Client", status: "Available", description: "Forwards website joins to the original Ferns launchers. Requires both original launchers and valid registrations." },
     Feature { name: "Preferences and import/export", category: "Settings", status: "Available", description: "Validated, versioned global settings, native file dialogs, and local storage. No per-game profiles." },
     Feature { name: "Client fingerprint", category: "Diagnostics", status: "Available", description: "On-demand SHA-256 identification. Authenticity verification needs an authoritative manifest." },
-    Feature { name: "CoreGui themes and layouts", category: "Interface", status: "Partial evidence", description: "The user confirmed an orange ESC icon through a local atlas trial. Arbitrary panel colors and positions remain unavailable. Signed-bundle edits caused fatal verification errors and were restored; menu-selector flag trials had no demonstrated effect." },
+    Feature { name: "CoreGui themes and layouts", category: "Interface", status: "Object-level integration unresolved", description: "The experimental GUI palette changes shared rendering. Per-component CoreGui properties and free positioning still need an integration point. Signed-bundle edits caused fatal verification errors and were restored; menu-selector flag trials had no demonstrated effect." },
     Feature { name: "Theme preview and accessibility", category: "Interface", status: "Planned", description: "Preview, import/export, per-component reset, larger text, contrast, and reduced motion for the game interface." },
     Feature { name: "Graphics presets and telemetry", category: "Graphics", status: "Investigating", description: "Validated graphics settings, average FPS, frame times, and memory measurements. No unverified client flags are applied." },
     Feature { name: "RoShade", category: "Graphics", status: "Investigating", description: "Compatibility, licensing, performance, and reversible installation of the actual requested package." },

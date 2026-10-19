@@ -7,7 +7,7 @@ use anyhow::{ensure, Result};
 use eframe::egui::{self, Color32, Margin, RichText, Stroke};
 use model::{Snapshot, FEATURES};
 use solstrap_core::{
-    discovery, interface_preferences,
+    discovery,
     settings::{Appearance, Settings},
     write_json,
 };
@@ -85,7 +85,8 @@ struct App {
     fingerprint: Option<String>,
     hash_job: Option<Receiver<Result<String>>>,
     window_focused: bool,
-    interface_draft: Option<interface_preferences::Values>,
+    interface_draft: Option<model::InterfaceDraft>,
+    color_draft: Option<solstrap_core::interface_colors::Palette>,
 }
 
 impl App {
@@ -102,6 +103,7 @@ impl App {
             hash_job: None,
             window_focused: true,
             interface_draft: None,
+            color_draft: None,
         };
         app.refresh(&cc.egui_ctx);
         app
@@ -110,7 +112,17 @@ impl App {
     fn refresh(&mut self, ctx: &egui::Context) {
         match model::snapshot() {
             Ok(snapshot) => {
-                self.interface_draft = snapshot.interface_preferences.as_ref().map(|s| s.current);
+                if self.color_draft.is_none() {
+                    self.color_draft = snapshot.interface_colors.as_ref().map(|s| s.palette);
+                }
+                if let Some(status) = &snapshot.interface_preferences {
+                    match &mut self.interface_draft {
+                        Some(draft) => draft.refresh(status.current),
+                        None => {
+                            self.interface_draft = Some(model::InterfaceDraft::new(status.current))
+                        }
+                    }
+                }
                 self.root_input = snapshot
                     .settings
                     .client_root
@@ -352,6 +364,87 @@ impl App {
     }
 
     fn interface(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let mut apply_colors = None;
+        let mut restore_colors = false;
+        skin::panel(ui, "GUI palette · Experimental", |ui| {
+            skin::hint(ui, "Recolors dark neutral GUI surfaces and blue accents on the tested Ferns D3D11 build. Matching game UI and image colors may also change. This does not change layout or individual CoreGui properties. Fully close the player before applying; join again to load the palette.");
+            if let Some(snapshot) = &self.snapshot {
+                if let Some(error) = &snapshot.interface_colors_error {
+                    skin::hint(ui, error);
+                }
+                if let Some(status) = &snapshot.interface_colors {
+                    if !status.supported {
+                        ui.colored_label(skin::ORANGE,"This shader pack is not supported. Restore other shader experiments or repair the client first.");
+                    }
+                    if status.conflict {
+                        ui.colored_label(skin::ORANGE,"Shader files changed outside SOLstrap. The current file and recovery backup are preserved.");
+                    }
+                    if let Some(palette) = &mut self.color_draft {
+                        ui.horizontal(|ui| {
+                            ui.color_edit_button_srgb(&mut palette.background);
+                            ui.label("Dark background");
+                        });
+                        ui.horizontal(|ui| {
+                            ui.color_edit_button_srgb(&mut palette.surface);
+                            ui.label("Lighter surface");
+                        });
+                        ui.horizontal(|ui| {
+                            ui.color_edit_button_srgb(&mut palette.accent);
+                            ui.label("Blue-accent replacement");
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            if ui
+                                .add_enabled(
+                                    status.supported
+                                        && !status.conflict
+                                        && (!status.installed || *palette != status.palette),
+                                    egui::Button::new("Apply GUI palette"),
+                                )
+                                .clicked()
+                            {
+                                apply_colors = Some(*palette);
+                            }
+                            if ui
+                                .add_enabled(
+                                    status.recovery_available
+                                        && !status.conflict
+                                        && status.installed,
+                                    egui::Button::new("Restore original GUI colors"),
+                                )
+                                .clicked()
+                            {
+                                restore_colors = true;
+                            }
+                            if ui.button("Warm orange preset").clicked() {
+                                *palette = Default::default();
+                            }
+                        });
+                    }
+                    skin::hint(
+                        ui,
+                        if status.installed {
+                            "Palette installed. Restart Ferns after changing colors."
+                        } else {
+                            "Original shader colors. Applying saves a verified recovery copy first."
+                        },
+                    );
+                }
+            }
+        });
+        if let Some(palette) = apply_colors {
+            self.operation(
+                ctx,
+                || model::apply_interface_colors(palette),
+                "GUI palette installed. Join again to load the new colors.",
+            );
+        }
+        if restore_colors {
+            self.operation(
+                ctx,
+                model::restore_interface_colors,
+                "Original GUI shaders restored. Join again to reload them.",
+            );
+        }
         let mut apply_preferences = None;
         let mut restore_preferences = false;
         skin::panel(ui, "Player accessibility preferences", |ui| {
@@ -364,7 +457,8 @@ impl App {
                     if status.conflict {
                         ui.colored_label(skin::ORANGE, "Preferences changed outside SOLstrap. Existing changes and recovery are preserved.");
                     }
-                    if let Some(draft) = &mut self.interface_draft {
+                    if let Some(editor) = &mut self.interface_draft {
+                        let draft = &mut editor.values;
                         let labels = ["Medium", "Large", "Larger", "Largest"];
                         ui.horizontal(|ui| {
                             ui.label("Text size");
@@ -425,19 +519,38 @@ impl App {
                                     );
                                 });
                         });
+                        editor.refresh(status.current);
+                        let conflict = status.conflict || editor.conflict(status.current);
+                        if editor.conflict(status.current) {
+                            ui.colored_label(skin::ORANGE, "A preference you edited also changed in the player settings. Your unsaved choices are kept. Discard them to load the current player values before editing again.");
+                        }
+                        if editor.dirty() {
+                            skin::hint(ui, "Unsaved changes — kept while this window is open. Apply after fully closing Ferns and other Roblox players. A failed apply keeps your choices here.");
+                        } else {
+                            skin::hint(ui, "Showing saved player preferences. Join again after applying to load changes in the player.");
+                        }
                         ui.horizontal(|ui| {
                             if ui
                                 .add_enabled(
-                                    !status.conflict && *draft != status.current,
+                                    !conflict && editor.dirty(),
                                     egui::Button::new("Apply player preferences"),
                                 )
                                 .clicked()
                             {
-                                apply_preferences = Some(*draft);
+                                apply_preferences = Some((editor.values, status.current));
                             }
                             if ui
                                 .add_enabled(
-                                    status.recovery_available && !status.conflict,
+                                    editor.dirty(),
+                                    egui::Button::new("Discard unsaved changes"),
+                                )
+                                .clicked()
+                            {
+                                *editor = model::InterfaceDraft::new(status.current);
+                            }
+                            if ui
+                                .add_enabled(
+                                    status.recovery_available && !conflict && !editor.dirty(),
                                     egui::Button::new("Restore previous preferences"),
                                 )
                                 .clicked()
@@ -450,10 +563,10 @@ impl App {
                 }
             }
         });
-        if let Some(values) = apply_preferences {
+        if let Some((values, expected)) = apply_preferences {
             self.operation(
                 ctx,
-                || model::apply_interface_preferences(values),
+                || model::apply_interface_preferences(values, expected),
                 "Player preferences saved. Join again to reload them.",
             );
         }
@@ -688,7 +801,7 @@ impl App {
                 ui.separator();
             }
             ui.add_space(4.0);
-            skin::hint(ui, "Changes will target Roblox CoreGui, not game-authored interfaces. Full replacement themes and accessibility presets are in scope.");
+            skin::hint(ui, "Object-level CoreGui themes and layout controls remain under investigation. The experimental palette above changes shared GUI rendering and can also affect game-authored interfaces.");
         });
     }
 
@@ -842,7 +955,19 @@ impl App {
                 skin::field_row(
                     ui,
                     "Game file changes",
-                    if snapshot.probe.as_ref().is_some_and(|probe| probe.installed) {
+                    if snapshot
+                        .interface_colors
+                        .as_ref()
+                        .is_some_and(|colors| colors.installed)
+                    {
+                        "GUI rendering palette installed"
+                    } else if snapshot
+                        .font_test
+                        .as_ref()
+                        .is_some_and(|font| font.installed)
+                    {
+                        "Interface font experiment installed"
+                    } else if snapshot.probe.as_ref().is_some_and(|probe| probe.installed) {
                         "CoreGui compatibility test installed"
                     } else {
                         "No active SOLstrap test detected"

@@ -4,6 +4,8 @@ Status: proposed integration contract, not an implemented or available Ferns API
 
 SOLstrap can modify local font-family assets, and a user has visually confirmed that change on Ferns 0.724. Menu colors and layout are supplied by compiled interface modules in the InExperience bundle. We have not found a supported way for the external SOLstrap process to override those module values.
 
+A separate experimental D3D11 rendering remap now provides palette controls for the pinned player. It has broader scope than CoreGui: matching game UI and image colors may change. It does not establish object-level style-provider access or layout control. The contract below still applies to a future per-component CoreGui integration.
+
 ## Information needed from the Ferns client maintainer
 
 Identify the supported mechanism, if any, for loading a modified InExperience interface bundle or an approved startup CoreScript on this build. Provide that loader's source/integration code or a development build with a documented configuration hook. Permission to develop SOLstrap is already established; the missing item is the technical integration mechanism.
@@ -21,4 +23,4 @@ The exact initial targets are `CoreGui/RobloxGui/Modules/Settings/Theme` for the
 
 In a fresh session, apply a distinctive Escape-menu background/accent color and a modest width change. Confirm the visible changes and a versioned bridge-start marker. Repeat in another game with no place modifications. Restore defaults and confirm the original layout/colors. Then expand component coverage and expose supported controls in the SOLstrap app.
 
-No color picker or layout slider should claim to apply changes until this client integration has passed that test.
+No object-level CoreGui color picker or layout slider should claim to apply changes until this client integration has passed that test. The separate rendering-palette experiment must retain its broader-scope label and its own validation record.

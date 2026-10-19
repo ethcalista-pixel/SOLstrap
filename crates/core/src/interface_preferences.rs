@@ -337,11 +337,25 @@ fn apply_with(
     values: Values,
     check_closed: impl Fn() -> Result<()>,
 ) -> Result<()> {
+    apply_checked_with(dir, path, values, None, check_closed)
+}
+
+fn apply_checked_with(
+    dir: &Path,
+    path: &Path,
+    values: Values,
+    expected: Option<Values>,
+    check_closed: impl Fn() -> Result<()>,
+) -> Result<()> {
     let _lock = lock(dir)?;
     values.validate()?;
     check_closed()?;
     let xml = read(path)?;
     let current = fields(&xml)?.0;
+    ensure!(
+        expected.is_none_or(|expected| expected == current),
+        "Player preferences changed since they were displayed. Your unsaved choices are preserved; refresh and review the changes before applying"
+    );
     let previous = backup(dir, path)?;
     if let Some(saved) = &previous {
         ensure!(
@@ -389,17 +403,22 @@ pub fn apply(dir: &Path, path: &Path, values: Values) -> Result<()> {
     apply_with(dir, path, values, require_closed)
 }
 
+/// Apply only to the values the editor reviewed, checked under the writer lock.
+pub fn apply_if_current(dir: &Path, path: &Path, values: Values, expected: Values) -> Result<()> {
+    apply_checked_with(dir, path, values, Some(expected), require_closed)
+}
+
 pub fn restore(dir: &Path, path: &Path) -> Result<()> {
     restore_with(dir, path, require_closed)
 }
 
 #[cfg(not(windows))]
-fn require_closed() -> Result<()> {
+pub(crate) fn require_closed() -> Result<()> {
     anyhow::bail!("Editing Windows player preferences requires Windows")
 }
 
 #[cfg(windows)]
-fn require_closed() -> Result<()> {
+pub(crate) fn require_closed() -> Result<()> {
     use windows_sys::Win32::{
         Foundation::{CloseHandle, GetLastError, ERROR_NO_MORE_FILES, INVALID_HANDLE_VALUE},
         System::Diagnostics::ToolHelp::{
@@ -454,6 +473,35 @@ mod tests {
             transparency: Some(0.0),
             reduced_motion: Some(true),
         }
+    }
+
+    #[test]
+    fn stale_editor_apply_preserves_profile_and_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let profile = dir.path().join("profile.xml");
+        let recovery = dir.path().join("recovery");
+        let displayed = fields(XML).unwrap().0;
+        let changed = XML.replace(">1</token>", ">2</token>");
+        fs::write(&profile, &changed).unwrap();
+        assert!(
+            apply_checked_with(&recovery, &profile, chosen(), Some(displayed), || Ok(())).is_err()
+        );
+        assert_eq!(read(&profile).unwrap(), changed);
+        assert!(!recovery.join(RECOVERY).exists());
+        apply_checked_with(
+            &recovery,
+            &profile,
+            chosen(),
+            Some(fields(&changed).unwrap().0),
+            || Ok(()),
+        )
+        .unwrap();
+        let saved = fs::read(recovery.join(RECOVERY)).unwrap();
+        assert!(
+            apply_checked_with(&recovery, &profile, displayed, Some(displayed), || Ok(())).is_err()
+        );
+        assert_eq!(fields(&read(&profile).unwrap()).unwrap().0, chosen());
+        assert_eq!(fs::read(recovery.join(RECOVERY)).unwrap(), saved);
     }
 
     #[test]
