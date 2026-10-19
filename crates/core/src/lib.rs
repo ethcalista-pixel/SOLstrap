@@ -1,3 +1,4 @@
+pub mod coregui_loader_trial;
 pub mod coregui_probe;
 pub mod diagnostics;
 pub mod discovery;

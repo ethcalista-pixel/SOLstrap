@@ -48,6 +48,16 @@ The installed user-settings XML exposes text size and preferred transparency, co
 
 No usable external color/layout override was found in these paths. No interface bundle, executable, signature check, or runtime memory was modified in this follow-up. The remaining dependency is an actual Ferns-supported route to replace or extend these CoreScripts. The exact maintainer handoff is recorded in [COREGUI_INTEGRATION.md](COREGUI_INTEGRATION.md).
 
+### Read-only startup trace and local-loader trial
+
+A subsequent fresh launch was observed through ordinary Windows process-query/read permissions. The trace inspected readable executable pages only, skipped inaccessible regions, and did not change target memory, page protections, or privileges. It did not inspect heaps or join command lines. The on-disk protected executable could not provide ordinary static code references; readable runtime pages exposed references to `LoadCoreScriptsFromPatchOnly` and the CoreScript module-source error path. This establishes that the loader setting has a real native-code reference in this build, not that it is a functioning customization hook.
+
+Static .NET metadata/IL inspection of FernsLauncher found no script-loader or theme-bridge type. Its command-line builder emits the normal experience-launch command. The player export table did not expose a Lua/CoreGui plugin entry point. These negative results do not rule out internal integration routes.
+
+The next controlled experiment uses the normal `Player/ClientSettings/ClientAppSettings.json` file: set only `FFlagLoadCoreScriptsFromPatchOnly` to the string `False` and reinstall the backed-up loose-script label probe. This local setting may be ignored, or may fail to provide usable source loading. No flag-allowlist bypass, executable patch, signature bypass, or runtime write is used. No layout/color functionality is claimed until actual script execution is demonstrated.
+
+This developer-only trial stores the original settings bytes and hashes in `%LOCALAPPDATA%/SOLstrap/coregui-loader-trial.json` before changing the file. That backup can contain existing client configuration and must remain local; it is not exported or committed. Restore through the updated Interface page's **Restore script / loader trial** action, or `solstrap-launcher.exe --coregui-loader-test-restore`. Restoration preserves later file changes and retains recovery on conflict. Existing font modifications are independent.
+
 ## Current log source
 
 This installation's recent sessions write under `%LOCALAPPDATA%/Roblox/logs`; the earlier `Ferns/Roblox/logs` file is stale. SOLstrap now chooses the folder with the newest player log between these two locations and reports the selected path. The shared folder can contain sessions from other Roblox installations, so the app labels that ownership limitation. Log contents and authentication tickets are not exported.

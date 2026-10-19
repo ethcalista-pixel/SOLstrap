@@ -425,7 +425,7 @@ impl App {
                         restore = ui
                             .add_enabled(
                                 probe.recovery_available,
-                                egui::Button::new("Restore original script"),
+                                egui::Button::new("Restore script / loader trial"),
                             )
                             .clicked();
                     });
@@ -466,7 +466,7 @@ impl App {
                 self.operation(
                     ctx,
                     || model::set_probe(false),
-                    "Original script restored. Rejoin Ferns to clear any test label.",
+                    "Original script and any loader-trial settings restored. Restart Ferns to clear the test.",
                 );
             }
         });

@@ -1,6 +1,7 @@
 use anyhow::{ensure, Context, Result};
 use serde::Serialize;
 use solstrap_core::{
+    coregui_loader_trial,
     coregui_probe::{self, ProbeStatus},
     data_dir,
     diagnostics::{self, CoreGuiReport},
@@ -117,6 +118,7 @@ pub fn set_probe(enabled: bool) -> Result<()> {
         );
         coregui_probe::install(&dir, &installation.root)
     } else {
+        coregui_loader_trial::restore(&dir, &installation.root)?;
         coregui_probe::restore(&dir, &installation.root)
     }
 }

@@ -2,7 +2,7 @@
 
 use anyhow::{ensure, Context, Result};
 use solstrap_core::{
-    coregui_probe, data_dir, diagnostics, discovery, health,
+    coregui_loader_trial, coregui_probe, data_dir, diagnostics, discovery, health,
     integration::{self, NativeRegistry},
     interface_font, launch,
     settings::Settings,
@@ -20,6 +20,7 @@ fn run() -> Result<()> {
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
                     "probe": coregui_probe::status(&dir, &installation.root)?,
+                    "loader_trial": coregui_loader_trial::status(&dir, &installation.root)?,
                     "interface_font": interface_font::status(&dir, &installation.root)?,
                     "installation": installation,
                     "integration": integration::status(&dir, &NativeRegistry)?,
@@ -61,11 +62,28 @@ fn run() -> Result<()> {
             let installation = discovery::inspect(&Settings::load(&dir)?)?;
             interface_font::install(&dir, &installation.root)
         }
+        Some("--coregui-loader-test-install") if args.len() == 1 => {
+            let installation = discovery::inspect(&Settings::load(&dir)?)?;
+            coregui_loader_trial::install(&dir, &installation.root)?;
+            if let Err(error) = coregui_probe::install(&dir, &installation.root) {
+                coregui_loader_trial::restore(&dir, &installation.root).context(
+                    "Script trial failed and settings rollback also failed; recovery retained",
+                )?;
+                return Err(error);
+            }
+            Ok(())
+        }
+        Some("--coregui-loader-test-restore") if args.len() == 1 => {
+            let installation = discovery::inspect(&Settings::load(&dir)?)?;
+            coregui_loader_trial::restore(&dir, &installation.root)?;
+            coregui_probe::restore(&dir, &installation.root)
+        }
         Some("--font-test-restore") if args.len() == 1 => {
             let installation = discovery::inspect(&Settings::load(&dir)?)?;
             interface_font::restore(&dir, &installation.root)
         }
         Some("--help") | None => {
+            println!("--coregui-loader-test-install  Developer trial: normal local loader setting plus label test\n--coregui-loader-test-restore  Restore trial settings and original script");
             println!("--font-test-install  Back up Builder Sans and map it to bundled Builder Mono\n--font-test-restore  Restore the original font definition");
             println!("SOLstrap launcher 0.1.0\n--inspect  Read-only client detection\n--diagnose  Read-only CoreGui/log evidence\n--dry-run <ferns-link>  Validate forwarding without launching\n--restore  Restore original website launch handlers\n--probe-install  Back up the loose script and add a temporary CoreGui test\n--probe-restore  Restore the original test script\n<ferns-link>  Forward a website join after integration is enabled");
             Ok(())
