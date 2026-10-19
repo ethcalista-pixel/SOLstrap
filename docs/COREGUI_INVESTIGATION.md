@@ -64,6 +64,22 @@ The user restarted after installing the complete loader-plus-probe trial and aga
 
 The trial setting and probe were subsequently restored through the verified recovery operation. The independent font modification remains installed. A native reference to a loader flag is not a sufficient basis to expose it as a working customization mechanism; another identical restart test is not justified by this result.
 
+## Historical source comparison (2016)
+
+The user supplied [Artifaqt/ROBLOX2016](https://github.com/Artifaqt/ROBLOX2016), whose description identifies it as leaked historical source. Read-only comparison used commit `e0cfac59fea3a5b986843e65b0fda286e439f9fc`; its provenance and correspondence to the installed 2026 client have not been independently established. No code from this repository was copied into SOLstrap.
+
+In that historical implementation, `App/script/CoreScript.cpp` selects loose source files only when `LuaVM::canCompileScripts()` is true. Otherwise, it requests embedded CoreScript bytecode. `App/script/LuaVMClient.cpp` returns false for this capability, while the server implementation returns true. A replacement-directory setting therefore does not, by itself, establish that a release player can compile loose scripts.
+
+This supplies a hypothesis consistent with the failed loose-script trial, not proof of the modern implementation. The installed 2026 player loads a separately verified InExperience bundle, which is a material difference. Further native inspection should distinguish configuration selection, source-compiler availability, and bundle loading instead of treating an override-directory string as a working extension API.
+
+## REA / Ghidra result
+
+Local REA 6.7.0 and Ghidra 12.1.4 passed the Windows provider prerequisite checks using the existing Node.js 24.19.0 and JDK 21 installation. No Codex configuration or client files were changed for this setup. Ghidra's official release archive digest was verified before extraction.
+
+The initial default-analysis query spent several minutes in `Windows x86 PE RTTI Analyzer` and was stopped without findings. A subsequent completed trace disabled that optional analyser and searched `LoadCoreScriptsFromPatchOnly`. It recovered the literal at `0x145cec618`, with no analysed references and no truncated result. This is a result about this static analysis profile, not proof that no native references exist: the earlier read-only runtime trace had already observed them. The protected on-disk executable remains a limitation, and this query did not recover a CoreGui customization hook. No additional join test is justified by this result alone.
+
+Raw REA evidence and local tooling stay outside the public repository under `SOLstrap-analysis`. No historical source, client binaries, or runtime memory was added to SOLstrap.
+
 ## Current log source
 
 This installation's recent sessions write under `%LOCALAPPDATA%/Roblox/logs`; the earlier `Ferns/Roblox/logs` file is stale. SOLstrap now chooses the folder with the newest player log between these two locations and reports the selected path. The shared folder can contain sessions from other Roblox installations, so the app labels that ownership limitation. Log contents and authentication tickets are not exported.
