@@ -37,17 +37,48 @@ pub struct CoreGuiReport {
     pub script_path: PathBuf,
     pub loose_script_present: bool,
     pub log_folder: PathBuf,
+    pub shared_log_folder: bool,
     pub logs: Vec<LogEvidence>,
     pub scan_errors: usize,
 }
 
 pub fn inspect_coregui(root: &Path) -> CoreGuiReport {
+    inspect_coregui_with_shared(root, None)
+}
+
+/// A shared folder can contain other Roblox sessions. Its origin is retained in the report.
+pub fn inspect_coregui_with_shared(root: &Path, shared: Option<&Path>) -> CoreGuiReport {
     let script_path =
         root.join("Player/content/scripts/CoreScripts/PerformanceStatsManagerScript.lua");
-    let log_folder = root.join("Roblox/logs");
+    let own = root.join("Roblox/logs");
+    let latest = |folder: &Path| {
+        fs::read_dir(folder)
+            .ok()
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let kind = entry.file_type().ok()?;
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if !kind.is_file()
+                    || kind.is_symlink()
+                    || !name.contains("_Player_")
+                    || !name.ends_with(".log")
+                {
+                    return None;
+                }
+                entry.metadata().ok()?.modified().ok()
+            })
+            .max()
+    };
+    let log_folder = shared
+        .filter(|folder| latest(folder) > latest(&own))
+        .map(Path::to_owned)
+        .unwrap_or(own);
     let mut report = CoreGuiReport {
         loose_script_present: script_path.is_file(),
         script_path,
+        shared_log_folder: log_folder != root.join("Roblox/logs"),
         log_folder,
         logs: Vec::new(),
         scan_errors: 0,
@@ -226,6 +257,35 @@ mod tests {
         assert!(report.logs.is_empty());
         assert_eq!(report.scan_errors, 0);
         assert!(!report.loose_script_present);
+    }
+
+    #[test]
+    fn selects_recent_shared_logs_and_keeps_their_origin_explicit() {
+        let temp = tempfile::tempdir().unwrap();
+        let own = log_file(temp.path(), "version_Player_own.log", b"old session\n");
+        File::options()
+            .write(true)
+            .open(own)
+            .unwrap()
+            .set_modified(SystemTime::UNIX_EPOCH)
+            .unwrap();
+        let shared = temp.path().join("shared");
+        fs::create_dir(&shared).unwrap();
+        fs::write(
+            shared.join("version_Player_shared.log"),
+            b"[SOLSTRAP_PROBE_V1] started\n",
+        )
+        .unwrap();
+        fs::write(shared.join("launcher.log"), b"irrelevant\n").unwrap();
+        let report = inspect_coregui_with_shared(temp.path(), Some(&shared));
+        assert_eq!(report.log_folder, shared);
+        assert!(report.shared_log_folder);
+        assert_eq!(report.logs.len(), 1);
+        assert!(report.logs[0].probe_started);
+        assert_eq!(
+            inspect_coregui(temp.path()).log_folder,
+            temp.path().join("Roblox/logs")
+        );
     }
 
     #[test]

@@ -347,7 +347,64 @@ impl App {
     }
 
     fn interface(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        skin::panel(ui, "Interface font experiment", |ui| {
+            ui.label("Test a visible font change without executing a client script.");
+            skin::hint(ui, "Temporarily maps Builder Sans to the bundled Builder Mono faces. After a full client restart, interface text using Builder Sans should become monospaced. Game text using that same font may also change. This is not a CoreGui layout or color theme.");
+            let mut install = false;
+            let mut restore = false;
+            if let Some(snapshot) = &self.snapshot {
+                if let Some(error) = &snapshot.font_test_error {
+                    skin::hint(ui, error);
+                }
+                if let Some(status) = &snapshot.font_test {
+                    skin::field_row(
+                        ui,
+                        "Asset test",
+                        if status.installed {
+                            "Installed · restart client to test"
+                        } else if status.conflict {
+                            "External change detected · backup retained"
+                        } else {
+                            "Original font / test not installed"
+                        },
+                    );
+                    ui.horizontal(|ui| {
+                        install = skin::primary(
+                            ui,
+                            "Install font test",
+                            snapshot.installation.detected && !status.recovery_available,
+                        )
+                        .clicked();
+                        restore = ui
+                            .add_enabled(
+                                status.recovery_available,
+                                egui::Button::new("Restore original font"),
+                            )
+                            .clicked();
+                    });
+                }
+            }
+            skin::hint(ui, "The original font definition is backed up first. Restoration preserves later changes. Installing the test does not confirm that the current client uses this asset.");
+            if install {
+                self.operation(ctx, || model::set_font_test(true), "Font test installed. Fully exit Ferns and join again, then check whether interface text is monospaced.");
+            }
+            if restore {
+                self.operation(
+                    ctx,
+                    || model::set_font_test(false),
+                    "Original font restored. Restart Ferns to reload it.",
+                );
+            }
+        });
         skin::panel(ui, "Test CoreGui access", |ui| {
+            if self.snapshot.as_ref().is_some_and(|s| {
+                s.installation
+                    .root
+                    .join("Player/ExtraContent/models/InExperience/InExperience.rbxm")
+                    .is_file()
+            }) {
+                skin::hint(ui, "An InExperience interface bundle is present. In the tested Ferns build, the loose-script test produced no execution marker or visible label. Reinstalling this test is not evidence of CoreGui access.");
+            }
             ui.label("Check whether Ferns loads the loose client script and allows it to display a CoreGui label.");
             skin::hint(ui, "Install the test, then leave and rejoin your game. If supported, a small ‘SOLstrap - CoreGui test’ label appears at the top. Your existing script is backed up before the test is added. Restore it after testing; rejoin again to clear the label.");
             let mut install = false;
@@ -572,6 +629,9 @@ impl App {
             if let Some(snapshot) = &self.snapshot {
                 let report = &snapshot.coregui;
                 skin::field_row(ui, "Log location", &report.log_folder.display().to_string());
+                if report.shared_log_folder {
+                    skin::hint(ui, "Shared Roblox log folder: these files may include sessions from other client installations. The newest available folder was selected; session ownership is not verified.");
+                }
                 if report.logs.is_empty() {
                     ui.label(
                         "No matching player logs are available yet. Join a game, then refresh.",

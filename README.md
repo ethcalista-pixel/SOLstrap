@@ -17,6 +17,7 @@ A native Rust desktop companion for the Ferns revival. Configure SOLstrap once, 
 - Startup findings distinguish absent launchers from historical Defender detections. Native, read-only history inspection matches only this installation's player launcher and update staging file.
 - Session clues identify explicit access-violation, allocation-failure, DNS, certificate-validation, and connection-failure log markers without claiming a confirmed root cause.
 - An optional, reversible CoreGui compatibility test that backs up the existing loose script and attempts to display a small label on the next join.
+- An optional interface-font experiment that maps Builder Sans to bundled Builder Mono faces, with exact-byte restoration and conflict protection. It can also affect game text using that family; live compatibility is not yet confirmed.
 
 Normal launch routing does not modify game files. The optional **CoreGui compatibility test** temporarily prepends a test to one existing loose client script, preserves its original bytes, and offers restoration. Installing the test does not prove that Ferns loads it; confirm its label in a new session. Full CoreGui customization, crash monitoring/safe launch, FPS/memory tuning, screenshot capture, Discord presence, repair downloads, RoShade, Linux client support, and DLSS frame generation are not implemented yet. App appearance changes SOLstrap, not the in-game interface.
 
@@ -57,6 +58,8 @@ Restore before removing the portable application. If Ferns or another app has ch
 
 If you installed the CoreGui test, restore its script from **Interface** before removing SOLstrap. The matching recovery command is `solstrap-launcher.exe --probe-restore`. Script restoration preserves later changes made by Ferns or another tool and retains the backup if there is a conflict. Rejoin to clear a test label already loaded into a session.
 
+The loose-script test did not execute in the tested 0.724 installation. Investigation located the compiled InExperience interface bundle; see [CoreGui findings](docs/COREGUI_INVESTIGATION.md). The separate **Interface font experiment** uses a font-family asset and needs a full restart for visual testing. Restore it through **Interface → Restore original font** or `solstrap-launcher.exe --font-test-restore` before removing SOLstrap. Its recovery file is `%LOCALAPPDATA%/SOLstrap/interface-font-test.json`.
+
 Read-only CLI operations:
 
 ```powershell
@@ -74,6 +77,8 @@ The dry run validates the link envelope and selects a launcher but does not star
 App preferences and integration recovery information are local files under `%LOCALAPPDATA%\SOLstrap`. There is no telemetry or diagnostic upload endpoint in this alpha. Exports contain local paths and configuration; review them before sharing. A locally calculated hash identifies a file and is not an authenticity guarantee.
 
 The CoreGui test backup contains the original local script and is never included in report exports. Log inspection checks at most four Ferns player logs, up to 512 KiB per file, and exports only filenames, timestamps, sizes, marker counts, and diagnostic booleans. Large logs are sampled at the head and tail; absent markers are not proof that a script never ran.
+
+Log discovery compares the Ferns log folder with the shared `%LOCALAPPDATA%/Roblox/logs` folder and selects the one with the newest player log. The shared folder may contain other Roblox installations' sessions; its origin is shown explicitly. Font-test backups are also excluded from reports.
 
 ## Checks
 

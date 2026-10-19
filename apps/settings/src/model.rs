@@ -7,6 +7,7 @@ use solstrap_core::{
     discovery::{self, Installation},
     health::{self, HealthReport},
     integration::{self, IntegrationStatus, NativeRegistry},
+    interface_font,
     settings::Settings,
 };
 use std::path::PathBuf;
@@ -20,6 +21,8 @@ pub struct Snapshot {
     pub health: HealthReport,
     pub probe: Option<ProbeStatus>,
     pub probe_error: Option<String>,
+    pub font_test: Option<interface_font::Status>,
+    pub font_test_error: Option<String>,
     pub launcher_available: bool,
     pub version: &'static str,
     pub platform: &'static str,
@@ -41,9 +44,16 @@ pub fn snapshot() -> Result<Snapshot> {
     let dir = data_dir()?;
     let settings = Settings::load(&dir)?;
     let installation = discovery::inspect(&settings)?;
-    let coregui = diagnostics::inspect_coregui(&installation.root);
+    let shared_logs =
+        std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("Roblox/logs"));
+    let coregui =
+        diagnostics::inspect_coregui_with_shared(&installation.root, shared_logs.as_deref());
     let health = health::inspect(&installation, &coregui);
     let (probe, probe_error) = match coregui_probe::status(&dir, &installation.root) {
+        Ok(status) => (Some(status), None),
+        Err(error) => (None, Some(format!("{error:#}"))),
+    };
+    let (font_test, font_test_error) = match interface_font::status(&dir, &installation.root) {
         Ok(status) => (Some(status), None),
         Err(error) => (None, Some(format!("{error:#}"))),
     };
@@ -53,6 +63,8 @@ pub fn snapshot() -> Result<Snapshot> {
         health,
         probe,
         probe_error,
+        font_test,
+        font_test_error,
         integration: integration::status(&dir, &NativeRegistry)?,
         launcher_available: launcher_path()?.is_file(),
         settings,
@@ -109,6 +121,16 @@ pub fn set_probe(enabled: bool) -> Result<()> {
     }
 }
 
+pub fn set_font_test(enabled: bool) -> Result<()> {
+    let dir = data_dir()?;
+    let installation = discovery::inspect(&Settings::load(&dir)?)?;
+    if enabled {
+        interface_font::install(&dir, &installation.root)
+    } else {
+        interface_font::restore(&dir, &installation.root)
+    }
+}
+
 #[derive(Serialize)]
 pub struct Feature {
     pub name: &'static str,
@@ -118,7 +140,8 @@ pub struct Feature {
 }
 
 pub const FEATURES: &[Feature] = &[
-    Feature { name: "CoreGui compatibility test", category: "Interface", status: "Available", description: "Optional test that backs up the loose script and attempts to show a small CoreGui label on the next join. Script execution and write access still need a real-session check." },
+    Feature { name: "CoreGui compatibility test", category: "Interface", status: "No result on tested build", description: "The loose-script test produced no label or execution marker on Ferns 0.724. The active interface uses the compiled InExperience bundle. Restore controls remain available." },
+    Feature { name: "Interface font experiment", category: "Interface", status: "Needs visual test", description: "Reversibly maps Builder Sans to bundled Builder Mono font assets. May also affect game-authored text. Restart the client and verify monospaced interface text; layout and color customization remain unproven." },
     Feature { name: "Player-log evidence", category: "Diagnostics", status: "Available", description: "Bounded scanning of recent Ferns player logs with structured script, test, and exception markers. Raw log text is not exported." },
     Feature { name: "Website launch integration", category: "Client", status: "Available", description: "Forwards website joins to the original Ferns launchers. Requires both original launchers and valid registrations." },
     Feature { name: "Preferences and import/export", category: "Settings", status: "Available", description: "Validated, versioned global settings, native file dialogs, and local storage. No per-game profiles." },

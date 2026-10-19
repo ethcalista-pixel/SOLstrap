@@ -3,6 +3,7 @@ pub mod diagnostics;
 pub mod discovery;
 pub mod health;
 pub mod integration;
+pub mod interface_font;
 pub mod launch;
 pub mod settings;
 

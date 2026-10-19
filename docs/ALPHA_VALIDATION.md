@@ -63,6 +63,14 @@ The revised app was opened for review. It uses a warm-charcoal work surface, a b
 
 ## Manual acceptance checks before a community alpha
 
+### Interface bundle and font-asset investigation
+
+The user installed the loose-script test, restarted the client, and reported no visible label. Read-only follow-up confirmed the expected patched bytes were present before process creation. Current session logs were found in the shared Roblox log folder and contain no SOLstrap probe markers. The log identifies InExperience bundle retrieval; metadata inspection found the corresponding compiled PerformanceStatsManagerScript module inside that bundle. See [CoreGui investigation](COREGUI_INVESTIGATION.md).
+
+The loose-script test has been restored. The separate Builder Sans → Builder Mono asset experiment was installed, restored, verified against the original SHA-256, and reinstalled for the next visual check. The current game process was not restarted by SOLstrap. Visual font compatibility remains unconfirmed. Font changes also affect game-authored text using Builder Sans.
+
+31 isolated tests pass. New cases cover font restoration, idempotency, interrupted installation, later-change conflicts, backup tampering, missing assets, invalid source paths, and selection of newer shared player logs with explicit source information. Strict workspace Clippy passes. The new Interface controls compile; interactive visual verification of this revision remains pending because desktop activity overlapped the attempted observation.
+
 ### Startup and failure diagnostics revision
 
 The CoreGui test was restored to its original bytes during the launcher investigation; no test is currently installed. The original website handlers are restored. After the user's latest reinstall, both original launchers and the player are present. A `ferns2026` dry run selects the player launcher and redacts the payload without executing it.

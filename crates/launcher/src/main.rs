@@ -4,7 +4,7 @@ use anyhow::{ensure, Context, Result};
 use solstrap_core::{
     coregui_probe, data_dir, diagnostics, discovery, health,
     integration::{self, NativeRegistry},
-    launch,
+    interface_font, launch,
     settings::Settings,
 };
 use std::{path::PathBuf, process::Command};
@@ -15,10 +15,13 @@ fn run() -> Result<()> {
     match args.first().map(String::as_str) {
         Some("--inspect") if args.len() == 1 => {
             let settings = Settings::load(&dir)?;
+            let installation = discovery::inspect(&settings)?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
-                    "installation": discovery::inspect(&settings)?,
+                    "probe": coregui_probe::status(&dir, &installation.root)?,
+                    "interface_font": interface_font::status(&dir, &installation.root)?,
+                    "installation": installation,
                     "integration": integration::status(&dir, &NativeRegistry)?,
                     "data_dir": dir,
                 }))?
@@ -28,7 +31,12 @@ fn run() -> Result<()> {
         Some("--restore") if args.len() == 1 => integration::disable(&dir, &NativeRegistry),
         Some("--diagnose") if args.len() == 1 => {
             let installation = discovery::inspect(&Settings::load(&dir)?)?;
-            let logs = diagnostics::inspect_coregui(&installation.root);
+            let shared_logs =
+                std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("Roblox/logs"));
+            let logs = diagnostics::inspect_coregui_with_shared(
+                &installation.root,
+                shared_logs.as_deref(),
+            );
             println!(
                 "{}",
                 serde_json::to_string_pretty(
@@ -49,7 +57,16 @@ fn run() -> Result<()> {
             let installation = discovery::inspect(&Settings::load(&dir)?)?;
             coregui_probe::restore(&dir, &installation.root)
         }
+        Some("--font-test-install") if args.len() == 1 => {
+            let installation = discovery::inspect(&Settings::load(&dir)?)?;
+            interface_font::install(&dir, &installation.root)
+        }
+        Some("--font-test-restore") if args.len() == 1 => {
+            let installation = discovery::inspect(&Settings::load(&dir)?)?;
+            interface_font::restore(&dir, &installation.root)
+        }
         Some("--help") | None => {
+            println!("--font-test-install  Back up Builder Sans and map it to bundled Builder Mono\n--font-test-restore  Restore the original font definition");
             println!("SOLstrap launcher 0.1.0\n--inspect  Read-only client detection\n--diagnose  Read-only CoreGui/log evidence\n--dry-run <ferns-link>  Validate forwarding without launching\n--restore  Restore original website launch handlers\n--probe-install  Back up the loose script and add a temporary CoreGui test\n--probe-restore  Restore the original test script\n<ferns-link>  Forward a website join after integration is enabled");
             Ok(())
         }
