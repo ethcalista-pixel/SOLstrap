@@ -7,7 +7,7 @@ use anyhow::{ensure, Result};
 use eframe::egui::{self, Color32, Margin, RichText, Stroke};
 use model::{Snapshot, FEATURES};
 use solstrap_core::{
-    discovery,
+    discovery, interface_preferences,
     settings::{Appearance, Settings},
     write_json,
 };
@@ -85,6 +85,7 @@ struct App {
     fingerprint: Option<String>,
     hash_job: Option<Receiver<Result<String>>>,
     window_focused: bool,
+    interface_draft: Option<interface_preferences::Values>,
 }
 
 impl App {
@@ -100,6 +101,7 @@ impl App {
             fingerprint: None,
             hash_job: None,
             window_focused: true,
+            interface_draft: None,
         };
         app.refresh(&cc.egui_ctx);
         app
@@ -108,6 +110,7 @@ impl App {
     fn refresh(&mut self, ctx: &egui::Context) {
         match model::snapshot() {
             Ok(snapshot) => {
+                self.interface_draft = snapshot.interface_preferences.as_ref().map(|s| s.current);
                 self.root_input = snapshot
                     .settings
                     .client_root
@@ -349,6 +352,118 @@ impl App {
     }
 
     fn interface(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let mut apply_preferences = None;
+        let mut restore_preferences = false;
+        skin::panel(ui, "Player accessibility preferences", |ui| {
+            skin::hint(ui, "Adjust text size, panel transparency, and interface motion where supported. These preferences are shared with other Windows Roblox players. Fully close the player before applying, then join again to reload them.");
+            if let Some(snapshot) = &self.snapshot {
+                if let Some(error) = &snapshot.interface_preferences_error {
+                    skin::hint(ui, error);
+                }
+                if let Some(status) = &snapshot.interface_preferences {
+                    if status.conflict {
+                        ui.colored_label(skin::ORANGE, "Preferences changed outside SOLstrap. Existing changes and recovery are preserved.");
+                    }
+                    if let Some(draft) = &mut self.interface_draft {
+                        let labels = ["Medium", "Large", "Larger", "Largest"];
+                        ui.horizontal(|ui| {
+                            ui.label("Text size");
+                            egui::ComboBox::from_id_salt("player-text-size")
+                                .selected_text(
+                                    draft.text_size.map_or("Player default", |size| {
+                                        labels[usize::from(size - 1)]
+                                    }),
+                                )
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut draft.text_size,
+                                        None,
+                                        "Player default",
+                                    );
+                                    for (index, label) in labels.iter().enumerate() {
+                                        ui.selectable_value(
+                                            &mut draft.text_size,
+                                            Some(index as u8 + 1),
+                                            *label,
+                                        );
+                                    }
+                                });
+                        });
+                        let mut set_transparency = draft.transparency.is_some();
+                        if ui
+                            .checkbox(&mut set_transparency, "Set panel transparency")
+                            .changed()
+                        {
+                            draft.transparency = set_transparency.then_some(1.0);
+                        }
+                        if let Some(value) = &mut draft.transparency {
+                            ui.add(egui::Slider::new(value, 0.0..=1.0).text("Panel transparency"));
+                        }
+                        ui.horizontal(|ui| {
+                            ui.label("Interface motion");
+                            egui::ComboBox::from_id_salt("player-motion")
+                                .selected_text(match draft.reduced_motion {
+                                    None => "Player default",
+                                    Some(false) => "Full motion",
+                                    Some(true) => "Reduced motion",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut draft.reduced_motion,
+                                        None,
+                                        "Player default",
+                                    );
+                                    ui.selectable_value(
+                                        &mut draft.reduced_motion,
+                                        Some(false),
+                                        "Full motion",
+                                    );
+                                    ui.selectable_value(
+                                        &mut draft.reduced_motion,
+                                        Some(true),
+                                        "Reduced motion",
+                                    );
+                                });
+                        });
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add_enabled(
+                                    !status.conflict && *draft != status.current,
+                                    egui::Button::new("Apply player preferences"),
+                                )
+                                .clicked()
+                            {
+                                apply_preferences = Some(*draft);
+                            }
+                            if ui
+                                .add_enabled(
+                                    status.recovery_available && !status.conflict,
+                                    egui::Button::new("Restore previous preferences"),
+                                )
+                                .clicked()
+                            {
+                                restore_preferences = true;
+                            }
+                        });
+                    }
+                    skin::hint(ui, "Text size and panel transparency were visually confirmed on the tested Ferns build. Reduced motion still needs verification. These controls do not set arbitrary panel colors or positions.");
+                }
+            }
+        });
+        if let Some(values) = apply_preferences {
+            self.operation(
+                ctx,
+                || model::apply_interface_preferences(values),
+                "Player preferences saved. Join again to reload them.",
+            );
+        }
+        if restore_preferences {
+            self.operation(
+                ctx,
+                model::restore_interface_preferences,
+                "Previous player preferences restored. Join again to reload them.",
+            );
+        }
         skin::panel(ui, "Interface font experiment", |ui| {
             ui.label("Test a visible font change without executing a client script.");
             skin::hint(ui, "Temporarily maps Builder Sans to the bundled Builder Mono faces. After a full client restart, interface text using Builder Sans should become monospaced. Game text using that same font may also change. This is not a CoreGui layout or color theme.");

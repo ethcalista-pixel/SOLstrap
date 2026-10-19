@@ -8,7 +8,7 @@ use solstrap_core::{
     discovery::{self, Installation},
     health::{self, HealthReport},
     integration::{self, IntegrationStatus, NativeRegistry},
-    interface_font,
+    interface_font, interface_preferences,
     settings::Settings,
 };
 use std::path::PathBuf;
@@ -27,6 +27,8 @@ pub struct Snapshot {
     pub loader_trial_error: Option<String>,
     pub font_test: Option<interface_font::Status>,
     pub font_test_error: Option<String>,
+    pub interface_preferences: Option<interface_preferences::Status>,
+    pub interface_preferences_error: Option<String>,
     pub launcher_available: bool,
     pub version: &'static str,
     pub platform: &'static str,
@@ -66,6 +68,13 @@ pub fn snapshot() -> Result<Snapshot> {
             Ok(status) => (Some(status), None),
             Err(error) => (None, Some(format!("{error:#}"))),
         };
+    let (interface_preferences, interface_preferences_error) =
+        match interface_preferences::profile_path()
+            .and_then(|path| interface_preferences::status(&dir, &path))
+        {
+            Ok(status) => (Some(status), None),
+            Err(error) => (None, Some(format!("{error:#}"))),
+        };
     Ok(Snapshot {
         data_directory: dir.clone(),
         installation,
@@ -77,6 +86,8 @@ pub fn snapshot() -> Result<Snapshot> {
         loader_trial_error,
         font_test,
         font_test_error,
+        interface_preferences,
+        interface_preferences_error,
         integration: integration::status(&dir, &NativeRegistry)?,
         launcher_available: launcher_path()?.is_file(),
         settings,
@@ -107,6 +118,18 @@ pub fn save(settings: &Settings) -> Result<()> {
         );
     }
     settings.save(&dir)
+}
+
+pub fn apply_interface_preferences(values: interface_preferences::Values) -> Result<()> {
+    interface_preferences::apply(
+        &data_dir()?,
+        &interface_preferences::profile_path()?,
+        values,
+    )
+}
+
+pub fn restore_interface_preferences() -> Result<()> {
+    interface_preferences::restore(&data_dir()?, &interface_preferences::profile_path()?)
 }
 
 pub fn set_integration(enabled: bool) -> Result<()> {
@@ -153,12 +176,13 @@ pub struct Feature {
 
 pub const FEATURES: &[Feature] = &[
     Feature { name: "CoreGui compatibility test", category: "Interface", status: "No result on tested build", description: "The loose-script test produced no label or execution marker on Ferns 0.724. The active interface uses the compiled InExperience bundle. Restore controls remain available." },
-    Feature { name: "Interface font experiment", category: "Interface", status: "Needs visual test", description: "Reversibly maps Builder Sans to bundled Builder Mono font assets. May also affect game-authored text. Restart the client and verify monospaced interface text; layout and color customization remain unproven." },
+    Feature { name: "Interface font experiment", category: "Interface", status: "Confirmed on tested build", description: "The user confirmed monospaced interface text on Ferns 0.724. Reversibly maps Builder Sans to bundled Builder Mono; game text using the same font may also change." },
+    Feature { name: "Player accessibility preferences", category: "Interface", status: "Text size and transparency confirmed", description: "The user confirmed Largest text and an opaque Escape-menu panel on the tested build. Reduced motion remains unverified. Changes have recovery and conflict checks and are shared with other Windows Roblox players; close the player before applying." },
     Feature { name: "Player-log evidence", category: "Diagnostics", status: "Available", description: "Bounded scanning of recent Ferns player logs with structured script, test, and exception markers. Raw log text is not exported." },
     Feature { name: "Website launch integration", category: "Client", status: "Available", description: "Forwards website joins to the original Ferns launchers. Requires both original launchers and valid registrations." },
     Feature { name: "Preferences and import/export", category: "Settings", status: "Available", description: "Validated, versioned global settings, native file dialogs, and local storage. No per-game profiles." },
     Feature { name: "Client fingerprint", category: "Diagnostics", status: "Available", description: "On-demand SHA-256 identification. Authenticity verification needs an authoritative manifest." },
-    Feature { name: "CoreGui themes and layouts", category: "Interface", status: "Investigating", description: "Topbar, escape menu, chat, player list, backpack, loading screen, notifications, fonts, colors, transparency, and scale. The client integration mechanism needs validation." },
+    Feature { name: "CoreGui themes and layouts", category: "Interface", status: "Partial evidence", description: "The user confirmed an orange ESC icon through a local atlas trial. Arbitrary panel colors and positions remain unavailable. Signed-bundle edits caused fatal verification errors and were restored; menu-selector flag trials had no demonstrated effect." },
     Feature { name: "Theme preview and accessibility", category: "Interface", status: "Planned", description: "Preview, import/export, per-component reset, larger text, contrast, and reduced motion for the game interface." },
     Feature { name: "Graphics presets and telemetry", category: "Graphics", status: "Investigating", description: "Validated graphics settings, average FPS, frame times, and memory measurements. No unverified client flags are applied." },
     Feature { name: "RoShade", category: "Graphics", status: "Investigating", description: "Compatibility, licensing, performance, and reversible installation of the actual requested package." },
