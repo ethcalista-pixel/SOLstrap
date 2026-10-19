@@ -389,13 +389,22 @@ impl App {
                             ctx.input(|i| i.time) as f32,
                             !snapshot.settings.reduced_motion,
                         );
+                        let blocked = if !valid {
+                            Some("Complete the marked color fields before applying. Use six hex digits, for example #FF8000.")
+                        } else if status.conflict {
+                            Some("Apply is unavailable because the shader pack changed outside SOLstrap. Recovery files have been preserved.")
+                        } else if !status.supported {
+                            Some("Apply is unavailable because this shader pack has no matching verified recovery record. Restore its original pack or recover the missing SOLstrap backup first.")
+                        } else {
+                            None
+                        };
+                        if let Some(reason) = blocked {
+                            ui.colored_label(skin::ORANGE, reason);
+                        }
                         ui.horizontal_wrapped(|ui| {
                             if ui
                                 .add_enabled(
-                                    valid
-                                        && status.supported
-                                        && !status.conflict
-                                        && (!status.installed || editor.palette != status.palette),
+                                    blocked.is_none(),
                                     egui::Button::new("Apply GUI palette"),
                                 )
                                 .clicked()
