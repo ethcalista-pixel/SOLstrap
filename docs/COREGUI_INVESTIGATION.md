@@ -18,7 +18,7 @@ Font families are separate JSON assets. Roblox's [Font documentation](https://gi
 
 SOLstrap now offers a narrow experiment: replace only Builder Sans face references with the nearest matching bundled Builder Mono weight/style. The original family name, weights, and styles remain. Source assets must be local, present, regular font files. No download or script execution is involved.
 
-This can affect interface text and any game-authored text using Builder Sans. It cannot isolate CoreGui from game text and does not implement layout, colors, scale, or a replacement menu. A full client restart and visual confirmation of monospaced menu/interface text are required before claiming this build loads the modified definition. Font caching or alternate families may prevent a visible result.
+This can affect interface text and any game-authored text using Builder Sans. It cannot isolate CoreGui from game text and does not implement layout, colors, scale, or a replacement menu. On 19 October, the user confirmed the changed font after restarting and supplied an interface screenshot. This establishes one visually confirmed asset override on this installation; it does not establish the ability to modify scripted layout or colors.
 
 Recovery is stored locally in `interface-font-test.json`. It is integrity-checked, written before modification, and excluded from exported reports. Restoration refuses to overwrite later changes and retains the backup on conflict. A local install/restore round trip matched the original SHA-256; the font experiment was then reinstalled for the next visual test.
 
@@ -27,6 +27,26 @@ Recovery is stored locally in `interface-font-test.json`. It is integrity-checke
 The player contains strings naming CoreScript overrides and related internal services. Strings alone do not establish that these interfaces are usable in a release player. No unverified command-line overrides, executable patches, or changes to signature verification were applied.
 
 Full menu and layout customization still needs a demonstrated execution or configuration entry point. The bundled script is the relevant target for further investigation; adding more loose Lua files is not a demonstrated solution.
+
+### Color and layout follow-up
+
+The user's target is the existing menus across all Ferns games. A place-specific replacement is outside this target.
+
+Read-only decoding of instance names and parent references located these actual bundle instances:
+
+- `PatchRoot/DataModelInstances/CoreGui/RobloxGui/Modules/Settings/Theme`
+- `PatchRoot/DataModelInstances/CorePackages/Packages/_Index/UIBlox/UIBlox/App/Style/Themes/DarkTheme`
+- `PatchRoot/DataModelInstances/CorePackages/Packages/_Index/UIBlox/UIBlox/Core/Style/StyleProvider`
+- `PatchRoot/DataModelInstances/CorePackages/Packages/_Index/Foundation/Foundation/Providers/Style/StyleProvider`
+- `PatchRoot/DataModelInstances/CorePackages/Packages/_Index/Foundation/Foundation/StyleSheet/updateTokenOverrides`
+
+The Settings Theme module references menu container positioning, dimensions, background/button/selection colors, typography, and scale. Foundation's provider references theme, device, scale, token overrides, and style sheets. These are relevant implementation targets, but finding them does not give an external application access to change their values.
+
+A misleading candidate, `TokenOverridesStore`, is under Foundation's `Utility/Stories` directory: it is a development-story helper, not evidence of a production configuration file. The bundle's eight StringValue entries are an asset map and Luau configuration files, not a menu theme configuration. The installed `AbyssBlue` models are Photobooth scenes containing lighting and geometry, not UI palettes.
+
+The installed user-settings XML exposes text size and preferred transparency, consistent with Roblox's [GuiService accessibility preferences](https://create.roblox.com/docs/reference/engine/classes/GuiService). These preferences do not supply arbitrary menu colors or component positioning.
+
+No usable external color/layout override was found in these paths. No interface bundle, executable, signature check, or runtime memory was modified in this follow-up. The remaining dependency is an actual Ferns-supported route to replace or extend these CoreScripts. The exact maintainer handoff is recorded in [COREGUI_INTEGRATION.md](COREGUI_INTEGRATION.md).
 
 ## Current log source
 

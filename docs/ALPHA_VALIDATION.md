@@ -65,6 +65,8 @@ The revised app was opened for review. It uses a warm-charcoal work surface, a b
 
 ### Interface bundle and font-asset investigation
 
+Follow-up: the user confirmed a visible font change after restarting and supplied a screenshot. Font-family asset overriding is therefore visually validated once on this installation. The user explicitly requires existing-menu colors and layout across all games. Further inspection located the relevant compiled Settings Theme, UIBlox, and Foundation providers, but did not identify a usable external theme input. [The integration dependency](COREGUI_INTEGRATION.md) is documented; color/layout modification is not implemented or claimed.
+
 The user installed the loose-script test, restarted the client, and reported no visible label. Read-only follow-up confirmed the expected patched bytes were present before process creation. Current session logs were found in the shared Roblox log folder and contain no SOLstrap probe markers. The log identifies InExperience bundle retrieval; metadata inspection found the corresponding compiled PerformanceStatsManagerScript module inside that bundle. See [CoreGui investigation](COREGUI_INVESTIGATION.md).
 
 The loose-script test has been restored. The separate Builder Sans → Builder Mono asset experiment was installed, restored, verified against the original SHA-256, and reinstalled for the next visual check. The current game process was not restarted by SOLstrap. Visual font compatibility remains unconfirmed. Font changes also affect game-authored text using Builder Sans.
