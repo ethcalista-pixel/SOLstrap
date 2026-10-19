@@ -49,7 +49,11 @@ pub fn inspect(settings: &Settings) -> Result<Installation> {
             }
         }
     };
-    let player = root.join("Player/RobloxPlayerBeta.exe");
+    let player = if root.join("Player/Ferns.exe").is_file() {
+        root.join("Player/Ferns.exe")
+    } else {
+        root.join("Player/RobloxPlayerBeta.exe")
+    };
     let detected = player.is_file();
     let player_bytes = std::fs::metadata(&player).ok().map(|m| m.len());
     let launchers = PROTOCOLS
@@ -111,4 +115,30 @@ pub fn fingerprint(path: &Path) -> Result<String> {
         hasher.update(&buffer[..count]);
     }
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_revival_player_and_original_player_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings = Settings {
+            client_root: Some(dir.path().to_owned()),
+            ..Settings::default()
+        };
+        assert!(!inspect(&settings).unwrap().detected);
+        std::fs::create_dir(dir.path().join("Player")).unwrap();
+        let original = dir.path().join("Player/RobloxPlayerBeta.exe");
+        std::fs::write(&original, b"fixture").unwrap();
+        assert_eq!(inspect(&settings).unwrap().player, original);
+        let revival = dir.path().join("Player/Ferns.exe");
+        std::fs::write(&revival, b"fixture").unwrap();
+        let installation = inspect(&settings).unwrap();
+        assert!(installation.detected);
+        assert_eq!(installation.player, revival);
+        std::fs::remove_file(original).unwrap();
+        assert!(inspect(&settings).unwrap().detected);
+    }
 }

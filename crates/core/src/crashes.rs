@@ -542,16 +542,20 @@ mod tests {
         let helper = PathBuf::from(
             std::env::var_os("SOLSTRAP_TEST_EXIT_HELPER").expect("explicit helper exe"),
         );
-        for code in [0u32, 0xc0000005, 259] {
+        for (name, code) in [
+            ("RobloxPlayerBeta.exe", 0u32),
+            ("Ferns.exe", 0xc0000005),
+            ("Ferns.exe", 259),
+        ] {
             let temp = tempfile::tempdir().unwrap();
             let root = temp.path().join("client");
             let dir = temp.path().join("state");
             fs::create_dir_all(root.join("Player")).unwrap();
-            fs::copy(&helper, root.join("Player/RobloxPlayerBeta.exe")).unwrap();
+            fs::copy(&helper, root.join("Player").join(name)).unwrap();
             let alien = temp.path().join("alien/Player");
             fs::create_dir_all(&alien).unwrap();
-            fs::copy(&helper, alien.join("RobloxPlayerBeta.exe")).unwrap();
-            let mut other = std::process::Command::new(alien.join("RobloxPlayerBeta.exe"))
+            fs::copy(&helper, alien.join(name)).unwrap();
+            let mut other = std::process::Command::new(alien.join(name))
                 .arg("1")
                 .spawn()
                 .unwrap();
@@ -559,7 +563,7 @@ mod tests {
             let worker_dir = dir.clone();
             let worker_id = id.clone();
             let watcher = std::thread::spawn(move || watch(&worker_dir, &worker_id));
-            let mut child = std::process::Command::new(root.join("Player/RobloxPlayerBeta.exe"))
+            let mut child = std::process::Command::new(root.join("Player").join(name))
                 .arg(format!("{code:X}"))
                 .spawn()
                 .unwrap();

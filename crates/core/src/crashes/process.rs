@@ -65,9 +65,11 @@ mod native {
                     .iter()
                     .position(|c| *c == 0)
                     .unwrap_or(entry.szExeFile.len());
-                if String::from_utf16_lossy(&entry.szExeFile[..n])
-                    .eq_ignore_ascii_case("RobloxPlayerBeta.exe")
-                {
+                let name = String::from_utf16_lossy(&entry.szExeFile[..n]);
+                let allowed_name = ["Ferns.exe", "RobloxPlayerBeta.exe"]
+                    .iter()
+                    .find(|allowed| name.eq_ignore_ascii_case(allowed));
+                if let Some(allowed_name) = allowed_name {
                     // QUERY_LIMITED_INFORMATION + SYNCHRONIZE only; no memory/process writes.
                     let h = OpenProcess(
                         PROCESS_QUERY_LIMITED_INFORMATION | 0x00100000,
@@ -81,7 +83,7 @@ mod native {
                         if QueryFullProcessImageNameW(h, 0, path.as_mut_ptr(), &mut len) != 0
                             && crate::launch::same_file_path(
                                 Path::new(&String::from_utf16_lossy(&path[..len as usize])),
-                                &root.join("Player/RobloxPlayerBeta.exe"),
+                                &root.join("Player").join(allowed_name),
                             )
                         {
                             let mut created: FILETIME = std::mem::zeroed();

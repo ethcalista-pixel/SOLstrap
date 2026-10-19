@@ -58,7 +58,7 @@ pub fn inspect(installation: &Installation, logs: &CoreGuiReport) -> HealthRepor
 fn startup_findings(installation: &Installation, defender: &DefenderReport) -> Vec<Finding> {
     let mut findings = Vec::new();
     if !installation.detected {
-        findings.push(Finding { title: "Game executable is missing".into(), evidence: "The selected folder does not contain Player/RobloxPlayerBeta.exe.".into(), next_step: "Check the selected installation folder. Website integration needs a complete client installation.".into() });
+        findings.push(Finding { title: "Game executable is missing".into(), evidence: "The selected folder contains neither Player/Ferns.exe nor Player/RobloxPlayerBeta.exe.".into(), next_step: "Check the selected installation folder. Website integration needs a complete client installation.".into() });
     }
     for launcher in installation
         .launchers
