@@ -82,7 +82,10 @@ fn patched(original: &[u8]) -> Vec<u8> {
 
 fn load_backup(dir: &Path, root: &Path) -> Result<Option<Backup>> {
     let path = dir.join(BACKUP_FILE);
-    if !path.exists() {
+    if !path
+        .try_exists()
+        .context("Cannot inspect CoreGui recovery file")?
+    {
         return Ok(None);
     }
     ensure!(

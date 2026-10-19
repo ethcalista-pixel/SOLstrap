@@ -57,7 +57,10 @@ fn read(path: &Path) -> Result<Vec<u8>> {
 }
 fn load(dir: &Path, root: &Path) -> Result<Option<Backup>> {
     let file = dir.join(BACKUP);
-    if !file.exists() {
+    if !file
+        .try_exists()
+        .context("Cannot inspect loader recovery file")?
+    {
         return Ok(None);
     }
     ensure!(
@@ -151,6 +154,24 @@ pub fn restore(dir: &Path, root: &Path) -> Result<()> {
     fs::remove_file(dir.join(BACKUP))?;
     Ok(())
 }
+pub fn install_with_probe(dir: &Path, root: &Path) -> Result<()> {
+    let existing = status(dir, root)?.recovery_available;
+    install(dir, root)?;
+    if let Err(error) = crate::coregui_probe::install(dir, root) {
+        if !existing {
+            restore(dir, root)
+                .context("Script trial failed and settings rollback failed; recovery retained")?;
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+pub fn restore_with_probe(dir: &Path, root: &Path) -> Result<()> {
+    restore(dir, root)?;
+    crate::coregui_probe::restore(dir, root)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,6 +219,14 @@ mod tests {
         assert!(install(&dir, &root).is_err());
         assert!(!dir.join(BACKUP).exists());
         assert_eq!(fs::read(path(&root)).unwrap(), b"[]");
+    }
+
+    #[test]
+    fn missing_script_rolls_back_new_settings_trial() {
+        let (_temp, root, dir, original) = fixture();
+        assert!(install_with_probe(&dir, &root).is_err());
+        assert_eq!(fs::read(path(&root)).unwrap(), original);
+        assert!(!dir.join(BACKUP).exists());
     }
     #[test]
     fn interrupted_replacement_and_tampered_backup_are_safe() {

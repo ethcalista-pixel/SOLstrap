@@ -84,6 +84,7 @@ struct App {
     search: String,
     fingerprint: Option<String>,
     hash_job: Option<Receiver<Result<String>>>,
+    window_focused: bool,
 }
 
 impl App {
@@ -98,6 +99,7 @@ impl App {
             search: String::new(),
             fingerprint: None,
             hash_job: None,
+            window_focused: true,
         };
         app.refresh(&cc.egui_ctx);
         app
@@ -403,31 +405,54 @@ impl App {
                     .join("Player/ExtraContent/models/InExperience/InExperience.rbxm")
                     .is_file()
             }) {
-                skin::hint(ui, "An InExperience interface bundle is present. In the tested Ferns build, the loose-script test produced no execution marker or visible label. Reinstalling this test is not evidence of CoreGui access.");
+                skin::hint(ui, "An InExperience interface bundle is present. The earlier script-only test did not execute on this build. This trial also tests the normal local loader setting; a visible label is still required to confirm execution.");
             }
-            ui.label("Check whether Ferns loads the loose client script and allows it to display a CoreGui label.");
-            skin::hint(ui, "Install the test, then leave and rejoin your game. If supported, a small ‘SOLstrap - CoreGui test’ label appears at the top. Your existing script is backed up before the test is added. Restore it after testing; rejoin again to clear the label.");
+            ui.label(
+                "Test the local CoreScript loader setting together with a visible label probe.",
+            );
+            skin::hint(ui, "Backs up client settings and the loose script, changes one normal local loader setting, and adds a small ‘SOLstrap - CoreGui test’ label. Restart Ferns to test it. The client may ignore the setting; if joining fails, restore the trial here. No executable or signature checks are changed.");
             let mut install = false;
             let mut restore = false;
             if let Some(snapshot) = &self.snapshot {
+                skin::field_row(
+                    ui,
+                    "Recovery folder",
+                    &snapshot.data_directory.display().to_string(),
+                );
                 if let Some(error) = &snapshot.probe_error {
                     ui.label(RichText::new(error).color(skin::ORANGE));
+                }
+                if let Some(error) = &snapshot.loader_trial_error {
+                    ui.label(RichText::new(error).color(skin::ORANGE));
+                }
+                let loader_recovery = snapshot
+                    .loader_trial
+                    .as_ref()
+                    .is_some_and(|s| s.recovery_available);
+                if let Some(trial) = &snapshot.loader_trial {
+                    skin::field_row(
+                        ui,
+                        "Loader trial",
+                        if trial.installed {
+                            "Installed · restart Ferns to test"
+                        } else if trial.recovery_available {
+                            "Recovery available · trial changed or restored externally"
+                        } else {
+                            "Not installed"
+                        },
+                    );
                 }
                 if let Some(probe) = &snapshot.probe {
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
                         install = skin::primary(
                             ui,
-                            "Install compatibility test",
-                            snapshot.coregui.loose_script_present && !probe.recovery_available,
+                            "Install loader trial",
+                            snapshot.coregui.loose_script_present
+                                && !probe.recovery_available
+                                && !loader_recovery,
                         )
                         .clicked();
-                        restore = ui
-                            .add_enabled(
-                                probe.recovery_available,
-                                egui::Button::new("Restore script / loader trial"),
-                            )
-                            .clicked();
                     });
                     if probe.installed {
                         skin::hint(ui, "Test installed for the next join. This does not alter the current game session.");
@@ -436,6 +461,16 @@ impl App {
                         skin::hint(ui, "The script changed after installation. Restoration will preserve that change and retain the backup.");
                     }
                 }
+                restore = ui
+                    .add_enabled(
+                        loader_recovery
+                            || snapshot
+                                .probe
+                                .as_ref()
+                                .is_some_and(|p| p.recovery_available),
+                        egui::Button::new("Restore script / loader trial"),
+                    )
+                    .clicked();
                 let successful = snapshot
                     .coregui
                     .logs
@@ -460,7 +495,7 @@ impl App {
                 skin::hint(ui, "Log markers may come from an earlier test. Confirm the visible label in your new session.");
             }
             if install {
-                self.operation(ctx, || model::set_probe(true), "Compatibility test installed. Rejoin Ferns, look for the label, then refresh this page.");
+                self.operation(ctx, || model::set_probe(true), "Loader trial and label probe installed. Fully exit Ferns and rejoin to test the label.");
             }
             if restore {
                 self.operation(
@@ -872,6 +907,11 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let focused = ctx.input(|input| input.viewport().focused.unwrap_or(false));
+        if focused && !self.window_focused {
+            self.refresh(ctx);
+        }
+        self.window_focused = focused;
         if let Some(job) = &self.hash_job {
             match job.try_recv() {
                 Ok(Ok(hash)) => {

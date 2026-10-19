@@ -48,7 +48,10 @@ fn read_regular(path: &Path) -> Result<Vec<u8>> {
 }
 fn load(dir: &Path, root: &Path) -> Result<Option<Backup>> {
     let path = dir.join(BACKUP);
-    if !path.exists() {
+    if !path
+        .try_exists()
+        .context("Cannot inspect font recovery file")?
+    {
         return Ok(None);
     }
     ensure!(

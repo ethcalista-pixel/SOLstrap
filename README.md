@@ -60,7 +60,7 @@ If you installed the CoreGui test, restore its script from **Interface** before 
 
 The loose-script test did not execute in the tested 0.724 installation. Investigation located the compiled InExperience interface bundle; see [CoreGui findings](docs/COREGUI_INVESTIGATION.md). The separate **Interface font experiment** uses a font-family asset and needs a full restart for visual testing. Restore it through **Interface → Restore original font** or `solstrap-launcher.exe --font-test-restore` before removing SOLstrap. Its recovery file is `%LOCALAPPDATA%/SOLstrap/interface-font-test.json`.
 
-A developer-only loader trial is available through `--coregui-loader-test-install`. It changes one normal local loader setting and installs the label probe; the build may ignore the setting or fail to load the interface. This is not a theme feature or a demonstrated hook. Restore both files with `--coregui-loader-test-restore` or the updated Interface page's **Restore script / loader trial** action. Its settings backup is local and excluded from reports. See the investigation document before using the trial.
+A developer loader trial is available through **Interface → Install loader trial** or `--coregui-loader-test-install`. It changes one normal local loader setting and installs the label probe; the build may ignore the setting or fail to load the interface. This is not a theme feature or a demonstrated hook. Restore both files with `--coregui-loader-test-restore` or **Interface → Restore script / loader trial**. Its settings backup is local and excluded from reports. The page shows the recovery folder and separate loader status, and rechecks state when the app regains focus. See the investigation document before using the trial.
 
 Read-only CLI operations:
 

@@ -64,19 +64,11 @@ fn run() -> Result<()> {
         }
         Some("--coregui-loader-test-install") if args.len() == 1 => {
             let installation = discovery::inspect(&Settings::load(&dir)?)?;
-            coregui_loader_trial::install(&dir, &installation.root)?;
-            if let Err(error) = coregui_probe::install(&dir, &installation.root) {
-                coregui_loader_trial::restore(&dir, &installation.root).context(
-                    "Script trial failed and settings rollback also failed; recovery retained",
-                )?;
-                return Err(error);
-            }
-            Ok(())
+            coregui_loader_trial::install_with_probe(&dir, &installation.root)
         }
         Some("--coregui-loader-test-restore") if args.len() == 1 => {
             let installation = discovery::inspect(&Settings::load(&dir)?)?;
-            coregui_loader_trial::restore(&dir, &installation.root)?;
-            coregui_probe::restore(&dir, &installation.root)
+            coregui_loader_trial::restore_with_probe(&dir, &installation.root)
         }
         Some("--font-test-restore") if args.len() == 1 => {
             let installation = discovery::inspect(&Settings::load(&dir)?)?;

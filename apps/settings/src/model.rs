@@ -15,6 +15,7 @@ use std::path::PathBuf;
 
 #[derive(Serialize)]
 pub struct Snapshot {
+    pub data_directory: PathBuf,
     pub settings: Settings,
     pub installation: Installation,
     pub integration: IntegrationStatus,
@@ -22,6 +23,8 @@ pub struct Snapshot {
     pub health: HealthReport,
     pub probe: Option<ProbeStatus>,
     pub probe_error: Option<String>,
+    pub loader_trial: Option<coregui_loader_trial::Status>,
+    pub loader_trial_error: Option<String>,
     pub font_test: Option<interface_font::Status>,
     pub font_test_error: Option<String>,
     pub launcher_available: bool,
@@ -58,12 +61,20 @@ pub fn snapshot() -> Result<Snapshot> {
         Ok(status) => (Some(status), None),
         Err(error) => (None, Some(format!("{error:#}"))),
     };
+    let (loader_trial, loader_trial_error) =
+        match coregui_loader_trial::status(&dir, &installation.root) {
+            Ok(status) => (Some(status), None),
+            Err(error) => (None, Some(format!("{error:#}"))),
+        };
     Ok(Snapshot {
+        data_directory: dir.clone(),
         installation,
         coregui,
         health,
         probe,
         probe_error,
+        loader_trial,
+        loader_trial_error,
         font_test,
         font_test_error,
         integration: integration::status(&dir, &NativeRegistry)?,
@@ -116,10 +127,9 @@ pub fn set_probe(enabled: bool) -> Result<()> {
             installation.detected,
             "Select a valid Ferns installation first"
         );
-        coregui_probe::install(&dir, &installation.root)
+        coregui_loader_trial::install_with_probe(&dir, &installation.root)
     } else {
-        coregui_loader_trial::restore(&dir, &installation.root)?;
-        coregui_probe::restore(&dir, &installation.root)
+        coregui_loader_trial::restore_with_probe(&dir, &installation.root)
     }
 }
 
