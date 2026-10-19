@@ -51,6 +51,20 @@ fn color(ui: &mut egui::Ui, label: &str, c: &mut [u8; 3], text: &mut String) -> 
     .inner
 }
 impl Editor {
+    pub fn exportable(&self) -> bool {
+        let p = self.palette;
+        [
+            (p.background, p.background_effect),
+            (p.surface, p.surface_effect),
+            (p.accent, p.accent_effect),
+        ]
+        .iter()
+        .enumerate()
+        .all(|(i, (primary, effect))| {
+            parse(&self.hex[i][0]) == Some(*primary)
+                && (!effect.active() || parse(&self.hex[i][1]) == Some(effect.secondary))
+        }) && p.validate().is_ok()
+    }
     pub fn new(palette: Palette) -> Self {
         Self {
             hex: [

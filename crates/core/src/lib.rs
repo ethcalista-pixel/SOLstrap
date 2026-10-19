@@ -9,6 +9,7 @@ pub mod interface_font;
 pub mod interface_preferences;
 pub mod launch;
 pub mod settings;
+pub mod themes;
 
 use anyhow::{Context, Result};
 use serde::{de::DeserializeOwned, Serialize};

@@ -4,6 +4,7 @@ mod model;
 mod palette_editor;
 mod skin;
 mod solar;
+mod theme_library;
 
 use anyhow::{ensure, Result};
 use eframe::egui::{self, Color32, Margin, RichText, Stroke};
@@ -90,6 +91,7 @@ struct App {
     interface_draft: Option<model::InterfaceDraft>,
     color_draft: Option<palette_editor::Editor>,
     solar_field: solar::Field,
+    theme_library: theme_library::Editor,
 }
 
 impl App {
@@ -108,6 +110,7 @@ impl App {
             interface_draft: None,
             color_draft: None,
             solar_field: Default::default(),
+            theme_library: theme_library::Editor::new(),
         };
         app.refresh(&cc.egui_ctx);
         // A local recovery seed lets this process recreate missing AppData
@@ -406,6 +409,16 @@ impl App {
     }
 
     fn interface(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        skin::panel(ui, "Saved themes", |ui| {
+            let draft = self
+                .color_draft
+                .as_ref()
+                .filter(|e| e.exportable())
+                .map(|e| e.palette);
+            if let Some(palette) = self.theme_library.show(ui, draft) {
+                self.color_draft = Some(palette_editor::Editor::new(palette));
+            }
+        });
         let mut apply_colors = None;
         let mut restore_colors = false;
         let mut recheck_colors = false;

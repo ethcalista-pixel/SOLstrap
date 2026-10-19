@@ -107,7 +107,11 @@ The native palette editor now includes picker/hex input, two-color linear and ra
 
 Offline checks pass: 52 workspace tests, strict clippy, formatting, and optimized builds. An additional opt-in read-only test builds all valid gradient/animation combinations for each palette role independently and all roles together against the private original pack. Every affected variant passes DXBC checksum, Direct3D reflection/global-buffer extent checks, and D3D11 WARP shader creation. The all-effects-off warm pack retains the exact hash of the previously verified live build. No installed Ferns assets were changed for these checks.
 
-Pending user tests: static gradient direction/spread and radial placement, each animation over multiple cycles, restart persistence, and restore. Animation reads the existing global force-field time field; its live advancement during this client's UI draws remains unverified. Offline shader acceptance is not evidence of live gradient or animation behavior.
+The user subsequently reported that their gradient and animation checks work. This is user-reported live confirmation; it does not establish exhaustive coverage of every mode, renderer, or client build. Detailed per-mode persistence and restore checks remain available for further testing.
+
+### Saved themes
+
+Named palette libraries, switching into the draft editor, explicit updates/renaming, and versioned JSON import/export are implemented. Every palette role retains primary/secondary colors, gradient mode/angle/spread, animation mode, and period. Switching or importing never installs shaders. Duplicate imports receive a numbered name, and writes are atomic and locked. Tests verify complete effect round-trips, non-destructive duplicate import, rename, stale-update rejection, invalid documents, and preservation of a corrupt library. Native file-dialog interaction remains a manual check; no Ferns join is required to save or switch editor themes.
 
 ### Missing palette recovery record
 
