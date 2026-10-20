@@ -446,7 +446,8 @@ pub(crate) fn require_closed() -> Result<()> {
                     .iter()
                     .position(|&c| c == 0)
                     .unwrap_or(entry.szExeFile.len());
-                ensure!(!String::from_utf16_lossy(&entry.szExeFile[..end]).eq_ignore_ascii_case("RobloxPlayerBeta.exe"),
+                let name = String::from_utf16_lossy(&entry.szExeFile[..end]);
+                ensure!(!name.eq_ignore_ascii_case("RobloxPlayerBeta.exe") && !name.eq_ignore_ascii_case("Ferns.exe"),
                     "Fully close Ferns and other Roblox players before changing shared interface preferences");
                 if Process32NextW(handle, &mut entry) == 0 {
                     ensure!(

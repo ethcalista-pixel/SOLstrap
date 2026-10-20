@@ -1,4 +1,4 @@
-//! Experimental D3D11 GUI palette remapping for one verified Ferns build.
+//! GUI palette remapping for pinned D3D11 and mobile Vulkan Ferns builds.
 //! This changes rendering assets, including matching game UI colors. It does
 //! not edit scripts, executable code, signature checks, or GUI object layouts.
 use anyhow::{ensure, Context, Result};
@@ -12,6 +12,8 @@ use std::{
 };
 
 mod dxbc;
+mod mobile;
+mod spirv;
 
 const ORIGINAL: &str = "63a233028114abdd3e554c12283b0d94c28d7528fe91f77870ac9fdc7597e71f";
 const EXE: &str = "ac4f4613a30012cc209b3358b815fcac9a3f47dea9860ebb5f74519ed0fe2958";
@@ -178,11 +180,14 @@ impl Palette {
 }
 #[derive(Debug, Serialize)]
 pub struct Status {
+    pub target: PathBuf,
+    pub backend: &'static str,
     pub current_hash: String,
     pub supported: bool,
     pub installed: bool,
     pub recovery_available: bool,
     pub conflict: bool,
+    pub needs_reapply: bool,
     pub palette: Palette,
 }
 #[derive(Serialize, Deserialize)]
@@ -231,15 +236,21 @@ fn managed(r: &Recovery, current: &str) -> bool {
     current == ORIGINAL || current == r.applied || r.pending.as_deref() == Some(current)
 }
 pub fn status(dir: &Path, root: &Path) -> Result<Status> {
+    if crate::discovery::android_library_present(root) {
+        return mobile::status(dir, root);
+    }
     let current = hash(&read(&target(root))?);
     let r = recovery(dir, root)?;
     let supported = current == ORIGINAL || r.as_ref().is_some_and(|r| managed(r, &current));
     Ok(Status {
+        target: target(root),
+        backend: "Windows D3D11",
         current_hash: current.clone(),
         supported,
         installed: supported && current != ORIGINAL,
         recovery_available: r.is_some(),
         conflict: r.as_ref().is_some_and(|r| !managed(r, &current)),
+        needs_reapply: current == ORIGINAL && r.as_ref().is_some_and(|r| r.applied != ORIGINAL),
         palette: r.map(|r| r.palette).unwrap_or_default(),
     })
 }
@@ -343,6 +354,9 @@ pub fn recover_warm(dir: &Path, root: &Path, original_path: &Path) -> Result<()>
     Ok(())
 }
 pub fn apply(dir: &Path, root: &Path, palette: Palette) -> Result<()> {
+    if crate::discovery::android_library_present(root) {
+        return mobile::apply(dir, root, palette);
+    }
     palette.validate()?;
     let _lock = lock(dir)?;
     crate::interface_preferences::require_closed()?;
@@ -402,6 +416,9 @@ pub fn apply(dir: &Path, root: &Path, palette: Palette) -> Result<()> {
     crate::write_json(&dir.join(RECORD), &r)
 }
 pub fn restore(dir: &Path, root: &Path) -> Result<()> {
+    if crate::discovery::android_library_present(root) {
+        return mobile::restore(dir, root);
+    }
     let _lock = lock(dir)?;
     crate::interface_preferences::require_closed()?;
     let mut r = recovery(dir, root)?.context("No color recovery backup exists")?;

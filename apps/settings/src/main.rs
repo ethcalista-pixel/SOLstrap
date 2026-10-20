@@ -435,15 +435,16 @@ impl App {
         let mut recheck_colors = false;
         let mut recover_colors = false;
         skin::panel(ui, "GUI palette · Experimental", |ui| {
-            skin::hint(ui, "Recolors dark neutral GUI surfaces and blue accents on the tested Ferns D3D11 build. Matching game UI and image colors may also change. This does not change layout or individual CoreGui properties. Fully close the player before applying; join again to load the palette.");
+            skin::hint(ui, "Recolors dark neutral GUI surfaces and blue accents on supported Ferns builds. Matching game UI and image colors may also change. This does not change layout or individual CoreGui properties. Fully close the player before applying; join again to load the palette.");
             if let Some(snapshot) = &self.snapshot {
-                if snapshot.installation.android_guest_library {
-                    ui.colored_label(skin::ORANGE, "Android guest library detected. This palette edits the previous Windows D3D11 pack; its effect on this client build is unverified. A leftover supported pack does not establish that the host uses it.");
-                }
                 if let Some(error) = &snapshot.interface_colors_error {
                     skin::hint(ui, error);
                 }
                 if let Some(status) = &snapshot.interface_colors {
+                    skin::hint(ui, format!("Shader backend: {}", status.backend));
+                    if status.needs_reapply {
+                        ui.colored_label(skin::ORANGE,"The shader pack is back to its original bytes. Your saved palette is retained. Fully close Ferns and Apply again after the client's asset refresh.");
+                    }
                     if !status.supported {
                         ui.colored_label(skin::ORANGE,"This shader pack is not supported. Restore other shader experiments or repair the client first.");
                     }
@@ -521,14 +522,7 @@ impl App {
                             "Recovery folder: {}",
                             snapshot.data_directory.display()
                         ));
-                        ui.label(format!(
-                            "Shader pack: {}",
-                            snapshot
-                                .installation
-                                .root
-                                .join("Player/shaders/shaders_d3d11.pack")
-                                .display()
-                        ));
+                        ui.label(format!("Shader pack: {}", status.target.display()));
                         ui.label(format!(
                             "Supported: {} · Installed: {} · Verified recovery: {}",
                             status.supported, status.installed, status.recovery_available
